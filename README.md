@@ -1,6 +1,6 @@
 # grecov
 
-Efficient Neyman construction for multinomial distributions\\ with the Greedy Coverage algorithm.
+Efficient Neyman construction for multinomial distributions with the Greedy Coverage algorithm.
 
 ## Installation
 
