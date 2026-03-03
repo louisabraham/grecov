@@ -5,6 +5,7 @@ Solves min/max v^T p  subject to  L(p) >= alpha/2  and  R(p) >= alpha/2,
 where L(p) and R(p) are the two-sided tail probabilities computed by BFS.
 """
 
+import logging
 import time
 
 import numpy as np
@@ -13,6 +14,7 @@ from scipy.optimize import Bounds, minimize
 try:
     from grecov._ext import grecov_bfs as _bfs_impl
 except ImportError:
+    logging.warning("Using Python implementation of BFS")
     from grecov.bfs import grecov_bfs as _bfs_impl
 
 
@@ -92,8 +94,11 @@ def confidence_interval(counts, values, alpha=0.05, eps=1e-6, verbose=False):
 
             cached_key = key
             cached_result = {
-                "p": p, "prob_left": prob_left, "prob_right": prob_right,
-                "grad_left": grad_left, "grad_right": grad_right,
+                "p": p,
+                "prob_left": prob_left,
+                "prob_right": prob_right,
+                "grad_left": grad_left,
+                "grad_right": grad_right,
             }
             return cached_result
 
@@ -114,22 +119,29 @@ def confidence_interval(counts, values, alpha=0.05, eps=1e-6, verbose=False):
             def fun(theta):
                 res = evaluate(theta)
                 return scale_constraint(res[f"prob_{side}"], res[f"grad_{side}"])[0]
+
             def jac(theta):
                 res = evaluate(theta)
                 return scale_constraint(res[f"prob_{side}"], res[f"grad_{side}"])[1]
+
             return {"type": "ineq", "fun": fun, "jac": jac}
 
         constraints = [make_constraint("left"), make_constraint("right")]
 
         result = minimize(
-            objective, theta0, method="SLSQP", jac=objective_jac,
-            constraints=constraints, bounds=theta_bounds,
+            objective,
+            theta0,
+            method="SLSQP",
+            jac=objective_jac,
+            constraints=constraints,
+            bounds=theta_bounds,
             options={"disp": verbose, "ftol": 1e-6, "maxiter": 200},
         )
 
         final = evaluate(result.x)
-        constraints_ok = (final["prob_left"] >= bound - 1e-4
-                          and final["prob_right"] >= bound - 1e-4)
+        constraints_ok = (
+            final["prob_left"] >= bound - 1e-4 and final["prob_right"] >= bound - 1e-4
+        )
 
         if not (result.success and constraints_ok):
             side = "lower" if sign > 0 else "upper"
