@@ -103,6 +103,22 @@ def test_equal_tail_coverage(k, n, p, values, alpha):
     ids=[_case_id(c) for c in CASES],
 )
 @pytest.mark.parametrize("alpha", [0.05, 0.01])
+def test_equal_tail_coverage_trust_constr(k, n, p, values, alpha):
+    coverage = _check_coverage(
+        p, values, n, alpha, method="equal_tail", optimizer="trust-constr"
+    )
+    assert coverage >= 1 - alpha, (
+        f"Coverage {coverage:.6f} < {1 - alpha} for k={k}, n={n}, "
+        f"p=[{', '.join(f'{pi:.3f}' for pi in p)}], alpha={alpha}"
+    )
+
+
+@pytest.mark.parametrize(
+    "k,n,p,values",
+    CASES,
+    ids=[_case_id(c) for c in CASES],
+)
+@pytest.mark.parametrize("alpha", [0.05, 0.01])
 def test_mass_coverage(k, n, p, values, alpha):
     np.random.seed(42)
     coverage = _check_coverage(p, values, n, alpha, method="mass")
