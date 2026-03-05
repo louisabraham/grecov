@@ -8,6 +8,27 @@ Efficient Neyman construction for multinomial distributions with the Greedy Cove
 pip install .
 ```
 
+## Development
+
+Install in editable mode with test dependencies:
+
+```bash
+pip install -e ".[test]"
+```
+
+After modifying C++ code in `src/ext/`, rebuild with:
+
+```bash
+pip install -e .
+```
+
+Install pre-commit hooks to run ruff and clang-format on every commit:
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
 ## Usage
 
 ```python

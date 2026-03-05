@@ -14,7 +14,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ipopt = ["cyipopt>=1.3"]
 test = ["pytest>=7.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.scikit-build]
 wheel.packages = ["src/grecov"]
