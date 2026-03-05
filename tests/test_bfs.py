@@ -18,6 +18,14 @@ BFS_CASES = [
     ([0.14, 0.29, 0.36, 0.21], [0, 1, 2, 3], [2, 4, 5, 3]),
     ([0.15, 0.30, 0.35, 0.20], [0, 1, 2, 3], [6, 12, 14, 8]),
     ([0.10, 0.25, 0.30, 0.20, 0.15], [0, 1, 2, 3, 4], [2, 5, 6, 4, 3]),
+    # Large n (k=2, n=500)
+    ([0.4, 0.6], [0, 1], [200, 300]),
+    # Large n (k=2, n=1000)
+    ([0.3, 0.7], [0, 1], [300, 700]),
+    # Large n (k=3, n=500)
+    ([0.30, 0.40, 0.30], [0, 1, 2], [150, 200, 150]),
+    # Large n (k=3, n=1000)
+    ([0.25, 0.42, 0.33], [0, 1, 2], [250, 420, 330]),
 ]
 
 MASS_CASES = [
@@ -33,6 +41,14 @@ MASS_CASES = [
     ([0.20, 0.20, 0.20, 0.20, 0.20], [4, 4, 4, 4, 4]),
     # Skewed
     ([0.02, 0.40, 0.40, 0.10, 0.08], [2, 5, 6, 4, 3]),
+    # Large n (k=2, n=500)
+    ([0.4, 0.6], [200, 300]),
+    # Large n (k=2, n=1000)
+    ([0.3, 0.7], [300, 700]),
+    # Large n (k=3, n=500)
+    ([0.30, 0.40, 0.30], [150, 200, 150]),
+    # Large n (k=3, n=1000)
+    ([0.25, 0.42, 0.33], [250, 420, 330]),
 ]
 
 
@@ -51,21 +67,24 @@ def test_grecov_bfs_match(p, v, counts):
     assert r_py["states_explored"] == r_cpp["states_explored"], (
         f"states_explored mismatch: py={r_py['states_explored']} cpp={r_cpp['states_explored']}"
     )
-    assert r_py["prob_left"] == pytest.approx(r_cpp["prob_left"], abs=1e-12)
-    assert r_py["prob_right"] == pytest.approx(r_cpp["prob_right"], abs=1e-12)
-    assert r_py["explored_mass"] == pytest.approx(r_cpp["explored_mass"], abs=1e-12)
+    # Larger n accumulates more floating-point error; scale tolerance accordingly
+    tol = max(1e-12, n * 1e-13)
+    tol2 = max(1e-10, n * n * 1e-13)
+    assert r_py["prob_left"] == pytest.approx(r_cpp["prob_left"], abs=tol)
+    assert r_py["prob_right"] == pytest.approx(r_cpp["prob_right"], abs=tol)
+    assert r_py["explored_mass"] == pytest.approx(r_cpp["explored_mass"], abs=tol)
     k = len(p)
     for i in range(k):
-        assert r_py["wsum_left"][i] == pytest.approx(r_cpp["wsum_left"][i], abs=1e-12)
-        assert r_py["wsum_right"][i] == pytest.approx(r_cpp["wsum_right"][i], abs=1e-12)
+        assert r_py["wsum_left"][i] == pytest.approx(r_cpp["wsum_left"][i], abs=tol)
+        assert r_py["wsum_right"][i] == pytest.approx(r_cpp["wsum_right"][i], abs=tol)
     for idx in range(k * k):
         assert r_py["wsum2_left"][idx] == pytest.approx(
-            r_cpp["wsum2_left"][idx], abs=1e-10
+            r_cpp["wsum2_left"][idx], abs=tol2
         ), (
             f"wsum2_left[{idx}] mismatch: py={r_py['wsum2_left'][idx]} cpp={r_cpp['wsum2_left'][idx]}"
         )
         assert r_py["wsum2_right"][idx] == pytest.approx(
-            r_cpp["wsum2_right"][idx], abs=1e-10
+            r_cpp["wsum2_right"][idx], abs=tol2
         ), (
             f"wsum2_right[{idx}] mismatch: py={r_py['wsum2_right'][idx]} cpp={r_cpp['wsum2_right'][idx]}"
         )

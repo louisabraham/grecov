@@ -2,11 +2,11 @@
 //
 // Optimised best-first enumeration of multinomial count vectors in decreasing
 // probability order.  Key optimisations:
-// - Pack d-dimensional count vectors into a single uint64_t (big-endian,
-//   8 bits per dimension, d<=8, counts<=255) for cheap hashing & comparison.
+// - Pack d-dimensional count vectors into uint64_t words (8-bit when n<=255,
+//   16-bit otherwise) for cheap hashing & comparison.
 // - Open-addressing hash set (FlatHashSet) for cache-friendly lookups.
-// - Template on D (dimension) so inner loops are fully unrolled at compile
-// time.
+// - Template on D (dimension) and packing scheme so inner loops are fully
+//   unrolled at compile time.
 // - Precomputed log(i) lookup table to avoid repeated std::log() calls.
 // - Cached log tables and reusable buffers across calls with same n.
 
@@ -22,39 +22,30 @@
 
 namespace nb = nanobind;
 
-// ─── Packed state representation ──────────────────────────────────
-// Each count occupies 8 bits, stored big-endian so that uint64_t numeric
-// comparison matches lexicographic vector comparison (needed for heap
-// tiebreaker determinism).
+// ─── Packing schemes ────────────────────────────────────────────────
 
-static constexpr int SHIFT[8] = {56, 48, 40, 32, 24, 16, 8, 0};
-static constexpr uint64_t DELTA[8] = {
-    1ULL << 56, 1ULL << 48, 1ULL << 40, 1ULL << 32,
-    1ULL << 24, 1ULL << 16, 1ULL << 8,  1ULL << 0,
-};
+// 8-bit per dimension, single uint64_t (d<=8, n<=255)
+template <int D> struct Pack8 {
+  using State = uint64_t;
+  static constexpr State EMPTY = ~uint64_t(0);
 
-template <int D> inline uint64_t pack_state(const int *c) {
-  uint64_t s = 0;
-  for (int i = 0; i < D; ++i)
-    s |= static_cast<uint64_t>(c[i]) << SHIFT[i];
-  return s;
-}
-
-template <int D> inline void unpack_state(uint64_t s, int *c) {
-  for (int i = 0; i < D; ++i)
-    c[i] = static_cast<int>((s >> SHIFT[i]) & 0xFF);
-}
-
-// ─── Open-addressing hash set ─────────────────────────────────────
-
-class FlatHashSet {
-  static constexpr uint64_t EMPTY = ~uint64_t(0);
-
-  std::vector<uint64_t> slots_;
-  size_t mask_;
-  size_t size_;
-
-  static size_t hash(uint64_t x) {
+  static inline State pack(const int *c) {
+    uint64_t s = 0;
+    for (int i = 0; i < D; ++i)
+      s |= uint64_t(c[i]) << ((7 - i) * 8);
+    return s;
+  }
+  static inline void unpack(State s, int *c) {
+    for (int i = 0; i < D; ++i)
+      c[i] = int((s >> ((7 - i) * 8)) & 0xFF);
+  }
+  static inline State neighbor(State s, int i, int j) {
+    static constexpr uint64_t D8[8] = {1ULL << 56, 1ULL << 48, 1ULL << 40,
+                                       1ULL << 32, 1ULL << 24, 1ULL << 16,
+                                       1ULL << 8,  1ULL};
+    return s + D8[i] - D8[j];
+  }
+  static inline size_t hash(State x) {
     x ^= x >> 33;
     x *= 0xff51afd7ed558ccdULL;
     x ^= x >> 33;
@@ -62,19 +53,99 @@ class FlatHashSet {
     x ^= x >> 33;
     return static_cast<size_t>(x);
   }
+};
+
+// 16-bit per dimension, single uint64_t (d<=4, n<=65535)
+template <int D> struct Pack16 {
+  static_assert(D <= 4);
+  using State = uint64_t;
+  static constexpr State EMPTY = ~uint64_t(0);
+
+  static inline State pack(const int *c) {
+    uint64_t s = 0;
+    for (int i = 0; i < D; ++i)
+      s |= uint64_t(c[i]) << ((3 - i) * 16);
+    return s;
+  }
+  static inline void unpack(State s, int *c) {
+    for (int i = 0; i < D; ++i)
+      c[i] = int((s >> ((3 - i) * 16)) & 0xFFFF);
+  }
+  static inline State neighbor(State s, int i, int j) {
+    static constexpr uint64_t D16[4] = {1ULL << 48, 1ULL << 32, 1ULL << 16,
+                                        1ULL};
+    return s + D16[i] - D16[j];
+  }
+  static inline size_t hash(State x) {
+    x ^= x >> 33;
+    x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33;
+    x *= 0xc4ceb9fe1a85ec53ULL;
+    x ^= x >> 33;
+    return static_cast<size_t>(x);
+  }
+};
+
+// 16-bit per dimension, __uint128_t (d 5-8, n<=65535)
+// big-endian: dim 0 at bits 112-127, dim 7 at bits 0-15
+template <int D> struct Pack16x2 {
+  static_assert(D >= 5 && D <= 8);
+  using State = __uint128_t;
+  static constexpr State EMPTY = ~static_cast<State>(0);
+
+  static inline State pack(const int *c) {
+    State s = 0;
+    for (int i = 0; i < D; ++i)
+      s |= static_cast<State>(c[i]) << ((7 - i) * 16);
+    return s;
+  }
+  static inline void unpack(State s, int *c) {
+    for (int i = 0; i < D; ++i)
+      c[i] = static_cast<int>((s >> ((7 - i) * 16)) & 0xFFFF);
+  }
+  static inline State neighbor(State s, int i, int j) {
+    static constexpr State D16[8] = {
+        static_cast<State>(1) << 112, static_cast<State>(1) << 96,
+        static_cast<State>(1) << 80,  static_cast<State>(1) << 64,
+        static_cast<State>(1) << 48,  static_cast<State>(1) << 32,
+        static_cast<State>(1) << 16,  static_cast<State>(1) << 0,
+    };
+    return s + D16[i] - D16[j];
+  }
+  static inline size_t hash(State x) {
+    uint64_t lo = static_cast<uint64_t>(x);
+    uint64_t hi = static_cast<uint64_t>(x >> 64);
+    uint64_t h = lo ^ (hi * 0x9e3779b97f4a7c15ULL);
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    h *= 0xc4ceb9fe1a85ec53ULL;
+    h ^= h >> 33;
+    return static_cast<size_t>(h);
+  }
+};
+
+// ─── Open-addressing hash set (templated on packing) ────────────────
+
+template <typename Pack> class FlatHashSet {
+  using State = typename Pack::State;
+
+  std::vector<State> slots_;
+  size_t mask_;
+  size_t size_;
 
 public:
   explicit FlatHashSet(size_t initial_cap = 1 << 16)
-      : slots_(initial_cap, EMPTY), mask_(initial_cap - 1), size_(0) {}
+      : slots_(initial_cap, Pack::EMPTY), mask_(initial_cap - 1), size_(0) {}
 
   void clear() {
-    std::memset(slots_.data(), 0xFF, slots_.size() * sizeof(uint64_t));
+    std::memset(slots_.data(), 0xFF, slots_.size() * sizeof(State));
     size_ = 0;
   }
 
   void clear_and_shrink(size_t max_cap = 1 << 18) {
     if (slots_.size() > max_cap) {
-      slots_.assign(max_cap, EMPTY);
+      slots_.assign(max_cap, Pack::EMPTY);
       mask_ = max_cap - 1;
       size_ = 0;
     } else {
@@ -82,13 +153,13 @@ public:
     }
   }
 
-  bool insert(uint64_t key) {
+  bool insert(State key) {
     if (__builtin_expect(size_ * 4 >= slots_.size() * 3, 0))
       grow();
-    size_t idx = hash(key) & mask_;
+    size_t idx = Pack::hash(key) & mask_;
     while (true) {
-      uint64_t slot = slots_[idx];
-      if (__builtin_expect(slot == EMPTY, 1)) {
+      const State &slot = slots_[idx];
+      if (__builtin_expect(slot == Pack::EMPTY, 1)) {
         slots_[idx] = key;
         ++size_;
         return true;
@@ -102,32 +173,28 @@ public:
 private:
   void grow() {
     size_t new_cap = slots_.size() * 2;
-    std::vector<uint64_t> old_slots(new_cap, EMPTY);
+    std::vector<State> old_slots(new_cap, Pack::EMPTY);
     std::swap(old_slots, slots_);
     mask_ = new_cap - 1;
     size_ = 0;
-    for (auto v : old_slots) {
-      if (v != EMPTY)
+    for (const auto &v : old_slots) {
+      if (v != Pack::EMPTY)
         insert(v);
     }
   }
 };
 
-// ─── Heap entry ───────────────────────────────────────────────────
-// Max-heap by logP; on tie, smaller packed state = higher priority
-// (matches Python's min-heap on (-logP, counts_tuple)).
+// ─── Heap entry & comparator ────────────────────────────────────────
 
-using Entry = std::pair<double, uint64_t>;
+template <typename State> using Entry = std::pair<double, State>;
 
-struct EntryCompare {
-  bool operator()(const Entry &a, const Entry &b) const {
+template <typename State> struct EntryCompare {
+  bool operator()(const Entry<State> &a, const Entry<State> &b) const {
     return a.first < b.first || (a.first == b.first && a.second > b.second);
   }
 };
 
 // ─── Cached log tables ───────────────────────────────────────────
-// log_factorials(n) and log_integers(n) only depend on n, which is
-// fixed across all BFS calls in a single solver run. Cache them.
 
 struct LogTables {
   int n = -1;
@@ -165,22 +232,17 @@ static LogTables &cached_tables() {
   return tables;
 }
 
-// ─── Reusable per-thread BFS buffers ──────────────────────────────
+// ─── Reusable per-packing BFS buffers ──────────────────────────────
 
-struct BFSBuffers {
-  FlatHashSet visited;
-
-  void reset() { visited.clear_and_shrink(); }
-};
-
-static BFSBuffers &get_buffers() {
-  static BFSBuffers bufs;
-  return bufs;
+template <typename Pack> static FlatHashSet<Pack> &get_visited() {
+  static FlatHashSet<Pack> visited;
+  return visited;
 }
 
 // ─── Balanced rounding (largest-remainder method) ──────────────────
 
-template <int D> static uint64_t start_counts(const double *p, int n) {
+template <int D, typename Pack>
+static typename Pack::State start_counts(const double *p, int n) {
   int counts[D];
   double frac[D];
   int total = 0;
@@ -197,7 +259,7 @@ template <int D> static uint64_t start_counts(const double *p, int n) {
   std::sort(idx, idx + D, [&frac](int a, int b) { return frac[a] > frac[b]; });
   for (int r = 0; r < remainder; ++r)
     counts[idx[r]] += 1;
-  return pack_state<D>(counts);
+  return Pack::pack(counts);
 }
 
 // ─── BFS result ────────────────────────────────────────────────────
@@ -215,10 +277,14 @@ struct BFSResult {
 
 // ─── Templated tail BFS ────────────────────────────────────────────
 
-template <int D>
+template <int D, typename Pack>
 __attribute__((noinline)) static BFSResult
-grecov_bfs_d(const double *p, const double *v, double S_obs, int n,
-             double eps) {
+grecov_bfs_impl(const double *p, const double *v, double S_obs, int n,
+                double eps) {
+  using State = typename Pack::State;
+  using E = Entry<State>;
+  using Cmp = EntryCompare<State>;
+
   double log_p[D];
   for (int i = 0; i < D; ++i)
     log_p[i] = std::log(p[i]);
@@ -227,9 +293,9 @@ grecov_bfs_d(const double *p, const double *v, double S_obs, int n,
   const auto &log_fact = tables.get_log_fact(n);
   const auto &li = tables.get_log_int(n);
 
-  auto log_prob = [&](uint64_t state) -> double {
+  auto log_prob = [&](State state) -> double {
     int c[D];
-    unpack_state<D>(state, c);
+    Pack::unpack(state, c);
     double val = log_fact[n];
     for (int i = 0; i < D; ++i) {
       val -= log_fact[c[i]];
@@ -238,18 +304,18 @@ grecov_bfs_d(const double *p, const double *v, double S_obs, int n,
     return val;
   };
 
-  uint64_t start_state = start_counts<D>(p, n);
+  State start_state = start_counts<D, Pack>(p, n);
   double start_lp = log_prob(start_state);
 
-  auto &bufs = get_buffers();
-  bufs.reset();
+  auto &visited = get_visited<Pack>();
+  visited.clear_and_shrink();
 
-  std::vector<Entry> heap_storage;
+  std::vector<E> heap_storage;
   heap_storage.reserve(1 << 16);
-  std::priority_queue<Entry, std::vector<Entry>, EntryCompare> heap(
-      EntryCompare{}, std::move(heap_storage));
+  std::priority_queue<E, std::vector<E>, Cmp> heap(Cmp{},
+                                                   std::move(heap_storage));
   heap.push({start_lp, start_state});
-  bufs.visited.insert(start_state);
+  visited.insert(start_state);
 
   double P_explored = 0.0;
   constexpr int dk = D * D;
@@ -283,19 +349,19 @@ grecov_bfs_d(const double *p, const double *v, double S_obs, int n,
     P_explored += P_state;
 
     int c[D];
-    unpack_state<D>(state, c);
+    Pack::unpack(state, c);
 
     double s_val = 0.0;
     for (int i = 0; i < D; ++i)
       s_val += c[i] * v[i];
 
-    constexpr int L = 0, R = 1, E = 2;
+    constexpr int L = 0, R = 1, EQ = 2;
     if (s_val < S_obs)
       accumulate(L, P_state, c);
     else if (s_val > S_obs)
       accumulate(R, P_state, c);
     else
-      accumulate(E, P_state, c);
+      accumulate(EQ, P_state, c);
 
     if (1.0 - eps <= P_explored)
       break;
@@ -306,30 +372,30 @@ grecov_bfs_d(const double *p, const double *v, double S_obs, int n,
       for (int i = 0; i < D; ++i) {
         if (i == j)
           continue;
-        uint64_t neighbor = state + DELTA[i] - DELTA[j];
-        if (!bufs.visited.insert(neighbor))
+        State nb = Pack::neighbor(state, i, j);
+        if (!visited.insert(nb))
           continue;
         double logP_n = logP + li[c[j]] - li[c[i] + 1] + log_p[i] - log_p[j];
-        heap.push({logP_n, neighbor});
+        heap.push({logP_n, nb});
       }
     }
   }
 
-  constexpr int L = 0, R = 1, E = 2;
+  constexpr int L = 0, R = 1, EQ = 2;
   BFSResult result;
-  result.prob_left = probs[L] + probs[E];
-  result.prob_right = probs[R] + probs[E];
+  result.prob_left = probs[L] + probs[EQ];
+  result.prob_right = probs[R] + probs[EQ];
   result.wsum_left.resize(D);
   result.wsum_right.resize(D);
   result.wsum2_left.resize(dk);
   result.wsum2_right.resize(dk);
   for (int i = 0; i < D; ++i) {
-    result.wsum_left[i] = wsums[L][i] + wsums[E][i];
-    result.wsum_right[i] = wsums[R][i] + wsums[E][i];
+    result.wsum_left[i] = wsums[L][i] + wsums[EQ][i];
+    result.wsum_right[i] = wsums[R][i] + wsums[EQ][i];
   }
   for (int i = 0; i < dk; ++i) {
-    result.wsum2_left[i] = wsum2s[L][i] + wsum2s[E][i];
-    result.wsum2_right[i] = wsum2s[R][i] + wsum2s[E][i];
+    result.wsum2_left[i] = wsum2s[L][i] + wsum2s[EQ][i];
+    result.wsum2_right[i] = wsum2s[R][i] + wsum2s[EQ][i];
   }
   result.explored_mass = std::min(P_explored, 1.0);
   result.states_explored = states_explored;
@@ -345,10 +411,14 @@ struct MassBFSResult {
 
 // ─── Templated mass BFS ───────────────────────────────────────────
 
-template <int D>
+template <int D, typename Pack>
 __attribute__((noinline)) static MassBFSResult
-grecov_mass_bfs_d(const double *p, const int *x_obs, int n, double eps,
-                  double tie_margin) {
+grecov_mass_bfs_impl(const double *p, const int *x_obs, int n, double eps,
+                     double tie_margin) {
+  using State = typename Pack::State;
+  using E = Entry<State>;
+  using Cmp = EntryCompare<State>;
+
   double log_p[D];
   for (int i = 0; i < D; ++i)
     log_p[i] = std::log(p[i]);
@@ -369,21 +439,21 @@ grecov_mass_bfs_d(const double *p, const int *x_obs, int n, double eps,
   double log_p_obs = log_prob(x_obs);
   double threshold = log_p_obs + tie_margin;
 
-  uint64_t start_state = start_counts<D>(p, n);
+  State start_state = start_counts<D, Pack>(p, n);
 
   int sc[D];
-  unpack_state<D>(start_state, sc);
+  Pack::unpack(start_state, sc);
   double start_lp = log_prob(sc);
 
-  auto &bufs = get_buffers();
-  bufs.reset();
+  auto &visited = get_visited<Pack>();
+  visited.clear_and_shrink();
 
-  std::vector<Entry> heap_storage;
+  std::vector<E> heap_storage;
   heap_storage.reserve(1 << 16);
-  std::priority_queue<Entry, std::vector<Entry>, EntryCompare> heap(
-      EntryCompare{}, std::move(heap_storage));
+  std::priority_queue<E, std::vector<E>, Cmp> heap(Cmp{},
+                                                   std::move(heap_storage));
   heap.push({start_lp, start_state});
-  bufs.visited.insert(start_state);
+  visited.insert(start_state);
 
   double mass = 0.0;
   int64_t states_explored = 0;
@@ -403,7 +473,7 @@ grecov_mass_bfs_d(const double *p, const int *x_obs, int n, double eps,
       break;
 
     int c[D];
-    unpack_state<D>(state, c);
+    Pack::unpack(state, c);
 
     for (int j = 0; j < D; ++j) {
       if (c[j] == 0)
@@ -411,11 +481,11 @@ grecov_mass_bfs_d(const double *p, const int *x_obs, int n, double eps,
       for (int i = 0; i < D; ++i) {
         if (i == j)
           continue;
-        uint64_t neighbor = state + DELTA[i] - DELTA[j];
-        if (!bufs.visited.insert(neighbor))
+        State nb = Pack::neighbor(state, i, j);
+        if (!visited.insert(nb))
           continue;
         double logP_n = logP + li[c[j]] - li[c[i] + 1] + log_p[i] - log_p[j];
-        heap.push({logP_n, neighbor});
+        heap.push({logP_n, nb});
       }
     }
   }
@@ -423,12 +493,21 @@ grecov_mass_bfs_d(const double *p, const int *x_obs, int n, double eps,
   return {mass, states_explored};
 }
 
-// ─── Dispatch by dimension ────────────────────────────────────────
+// ─── Dispatch by dimension and packing ─────────────────────────────
 
 static BFSResult grecov_bfs_dispatch(const std::vector<double> &p_raw,
                                      const std::vector<double> &v, double S_obs,
                                      int n, double eps) {
   int d = static_cast<int>(p_raw.size());
+
+  if (d < 2 || d > 8)
+    throw std::runtime_error("dimension must be between 2 and 8");
+  if (static_cast<int>(v.size()) != d)
+    throw std::runtime_error("p and v must have the same length");
+  if (n <= 0)
+    throw std::runtime_error("n must be positive");
+  if (n > 65535)
+    throw std::runtime_error("n must be <= 65535");
 
   // Stabilise probabilities
   constexpr double MIN_P = 1e-300;
@@ -444,22 +523,39 @@ static BFSResult grecov_bfs_dispatch(const std::vector<double> &p_raw,
   const double *pp = p.data();
   const double *vp = v.data();
 
-#define DISPATCH_BFS(D_VAL)                                                    \
+  if (n <= 255) {
+#define DISPATCH_BFS_8(D_VAL)                                                  \
   case D_VAL:                                                                  \
-    return grecov_bfs_d<D_VAL>(pp, vp, S_obs, n, eps);
-
-  switch (d) {
-    DISPATCH_BFS(2)
-    DISPATCH_BFS(3)
-    DISPATCH_BFS(4)
-    DISPATCH_BFS(5)
-    DISPATCH_BFS(6)
-    DISPATCH_BFS(7)
-    DISPATCH_BFS(8)
-  default:
-    throw std::runtime_error("dimension must be between 2 and 8");
+    return grecov_bfs_impl<D_VAL, Pack8<D_VAL>>(pp, vp, S_obs, n, eps);
+    switch (d) {
+      DISPATCH_BFS_8(2)
+      DISPATCH_BFS_8(3)
+      DISPATCH_BFS_8(4)
+      DISPATCH_BFS_8(5)
+      DISPATCH_BFS_8(6)
+      DISPATCH_BFS_8(7)
+      DISPATCH_BFS_8(8)
+    }
+#undef DISPATCH_BFS_8
+  } else {
+    switch (d) {
+    case 2:
+      return grecov_bfs_impl<2, Pack16<2>>(pp, vp, S_obs, n, eps);
+    case 3:
+      return grecov_bfs_impl<3, Pack16<3>>(pp, vp, S_obs, n, eps);
+    case 4:
+      return grecov_bfs_impl<4, Pack16<4>>(pp, vp, S_obs, n, eps);
+    case 5:
+      return grecov_bfs_impl<5, Pack16x2<5>>(pp, vp, S_obs, n, eps);
+    case 6:
+      return grecov_bfs_impl<6, Pack16x2<6>>(pp, vp, S_obs, n, eps);
+    case 7:
+      return grecov_bfs_impl<7, Pack16x2<7>>(pp, vp, S_obs, n, eps);
+    case 8:
+      return grecov_bfs_impl<8, Pack16x2<8>>(pp, vp, S_obs, n, eps);
+    }
   }
-#undef DISPATCH_BFS
+  __builtin_unreachable();
 }
 
 static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
@@ -469,6 +565,15 @@ static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
   int n = 0;
   for (auto xi : x_obs)
     n += xi;
+
+  if (d < 2 || d > 8)
+    throw std::runtime_error("dimension must be between 2 and 8");
+  if (static_cast<int>(x_obs.size()) != d)
+    throw std::runtime_error("p and x_obs must have the same length");
+  if (n <= 0)
+    throw std::runtime_error("n must be positive");
+  if (n > 65535)
+    throw std::runtime_error("n must be <= 65535");
 
   // Stabilise probabilities
   constexpr double MIN_P = 1e-300;
@@ -485,22 +590,40 @@ static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
   const double *pp = p.data();
   const int *xp = x.data();
 
-#define DISPATCH_MASS_BFS(D_VAL)                                               \
+  if (n <= 255) {
+#define DISPATCH_MASS_8(D_VAL)                                                 \
   case D_VAL:                                                                  \
-    return grecov_mass_bfs_d<D_VAL>(pp, xp, n, eps, tie_margin);
-
-  switch (d) {
-    DISPATCH_MASS_BFS(2)
-    DISPATCH_MASS_BFS(3)
-    DISPATCH_MASS_BFS(4)
-    DISPATCH_MASS_BFS(5)
-    DISPATCH_MASS_BFS(6)
-    DISPATCH_MASS_BFS(7)
-    DISPATCH_MASS_BFS(8)
-  default:
-    throw std::runtime_error("dimension must be between 2 and 8");
+    return grecov_mass_bfs_impl<D_VAL, Pack8<D_VAL>>(pp, xp, n, eps,           \
+                                                     tie_margin);
+    switch (d) {
+      DISPATCH_MASS_8(2)
+      DISPATCH_MASS_8(3)
+      DISPATCH_MASS_8(4)
+      DISPATCH_MASS_8(5)
+      DISPATCH_MASS_8(6)
+      DISPATCH_MASS_8(7)
+      DISPATCH_MASS_8(8)
+    }
+#undef DISPATCH_MASS_8
+  } else {
+    switch (d) {
+    case 2:
+      return grecov_mass_bfs_impl<2, Pack16<2>>(pp, xp, n, eps, tie_margin);
+    case 3:
+      return grecov_mass_bfs_impl<3, Pack16<3>>(pp, xp, n, eps, tie_margin);
+    case 4:
+      return grecov_mass_bfs_impl<4, Pack16<4>>(pp, xp, n, eps, tie_margin);
+    case 5:
+      return grecov_mass_bfs_impl<5, Pack16x2<5>>(pp, xp, n, eps, tie_margin);
+    case 6:
+      return grecov_mass_bfs_impl<6, Pack16x2<6>>(pp, xp, n, eps, tie_margin);
+    case 7:
+      return grecov_mass_bfs_impl<7, Pack16x2<7>>(pp, xp, n, eps, tie_margin);
+    case 8:
+      return grecov_mass_bfs_impl<8, Pack16x2<8>>(pp, xp, n, eps, tie_margin);
+    }
   }
-#undef DISPATCH_MASS_BFS
+  __builtin_unreachable();
 }
 
 // ─── nanobind module ───────────────────────────────────────────────
