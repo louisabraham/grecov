@@ -20,7 +20,7 @@ try:
     from cyipopt import minimize_ipopt
 except ImportError:
     minimize_ipopt = None
-from scipy.optimize import Bounds, NonlinearConstraint, differential_evolution, minimize
+from scipy.optimize import NonlinearConstraint, differential_evolution, minimize
 
 from grecov.bfs import grecov_bfs as _bfs_py
 from grecov.bfs import grecov_mass_bfs as _cum_bfs_py
@@ -321,7 +321,7 @@ class TailContext:
     pmin: float
     eps: float
     x0: np.ndarray
-    opt_bounds: Bounds
+    opt_bounds: list[tuple[float, float]]
     bfs_impl: Callable
     stats: BFSStats = field(default_factory=BFSStats)
 
@@ -337,7 +337,7 @@ class MassContext:
     tie_margin: float
     x_obs_list: list[int]
     x0: np.ndarray
-    opt_bounds: Bounds
+    opt_bounds: list[tuple[float, float]]
     bfs_impl: Callable
     stats: BFSStats = field(default_factory=BFSStats)
 
