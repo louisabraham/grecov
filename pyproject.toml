@@ -6,7 +6,7 @@ build-backend = "scikit_build_core.build"
 name = "grecov"
 version = "0.1.0"
 description = "Exact confidence intervals for multinomial distributions via Neyman construction"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
     "numpy>=1.20",
