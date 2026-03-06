@@ -30,6 +30,8 @@ jobs:
             runs-on: macos-latest
           - os: windows
             runs-on: windows-latest
+          - os: pyodide
+            runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -43,35 +45,12 @@ jobs:
           CIBW_TEST_COMMAND: "pytest {project}/tests -q"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=10.13"
+          CIBW_PLATFORM: ${{ matrix.os == 'pyodide' && 'pyodide' || '' }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
           path: wheelhouse/*.whl
-
-  build_pyodide:
-    name: Wheels (pyodide)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - run: pip install pyodide-build
-      - name: Get Emscripten version
-        run: echo "EMSCRIPTEN_VERSION=$(pyodide config get emscripten_version)" >> $GITHUB_ENV
-
-      - uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: ${{ env.EMSCRIPTEN_VERSION }}
-
-      - run: pyodide build
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wheels-pyodide
-          path: dist/*.whl
 
   build_sdist:
     name: sdist
@@ -86,7 +65,7 @@ jobs:
 
   upload_pypi:
     name: Upload to PyPI
-    needs: [build_wheels, build_pyodide, build_sdist]
+    needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
     if: github.event_name == 'release' && github.event.action == 'published'
     environment: pypi
@@ -100,7 +79,7 @@ jobs:
 
   create_tag:
     name: Create version tag
-    needs: [build_wheels, build_pyodide, build_sdist]
+    needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
