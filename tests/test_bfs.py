@@ -1,9 +1,9 @@
 """Tests that Python and C++ BFS implementations produce identical results."""
 
 import pytest
-
 from grecov._ext import grecov_bfs as cpp_bfs  # type: ignore
 from grecov._ext import grecov_mass_bfs as cpp_mass_bfs  # type: ignore
+
 from grecov.bfs import grecov_bfs as py_bfs
 from grecov.bfs import grecov_mass_bfs as py_mass_bfs
 
@@ -72,7 +72,7 @@ def test_grecov_bfs_match(p, v, counts):
     assert r_py["states_explored"] == r_cpp["states_explored"], (
         f"states_explored mismatch: py={r_py['states_explored']} cpp={r_cpp['states_explored']}"
     )
-    tol = max(ATOL, n * 2e-13)
+    tol = max(ATOL, n * 1e-13)
     tol2 = max(ATOL, n * n * 1e-13)
     assert r_py["prob_left"] == pytest.approx(r_cpp["prob_left"], abs=tol)
     assert r_py["prob_right"] == pytest.approx(r_cpp["prob_right"], abs=tol)
