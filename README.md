@@ -1,11 +1,22 @@
 # grecov
 
+[![PyPI](https://img.shields.io/pypi/v/grecov)](https://pypi.org/project/grecov/)
+[![Tests](https://github.com/louisabraham/grecov/actions/workflows/test.yml/badge.svg)](https://github.com/louisabraham/grecov/actions/workflows/test.yml)
+[![Build](https://github.com/louisabraham/grecov/actions/workflows/build.yml/badge.svg)](https://github.com/louisabraham/grecov/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Efficient Neyman construction for multinomial distributions with the Greedy Coverage algorithm.
 
 ## Installation
 
 ```bash
-pip install .
+pip install grecov
+```
+
+For the IPOPT optimizer (recommended for best results):
+
+```bash
+pip install grecov[ipopt]
 ```
 
 ## Development
@@ -126,7 +137,7 @@ const pyodide = await loadPyodide();
 await pyodide.loadPackage(["numpy", "scipy"]);
 
 // Load the grecov wheel (adjust path or URL to where you host it)
-await pyodide.loadPackage("./grecov-0.1.0-cp312-cp312-pyodide_2024_0_wasm32.whl");
+await pyodide.loadPackage("./grecov-0.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl");
 
 pyodide.runPython(`
 from grecov import multinomial_ci

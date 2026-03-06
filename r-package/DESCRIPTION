@@ -1,6 +1,6 @@
 Package: grecov
 Title: Exact Confidence Intervals for Multinomial Distributions
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: person("Louis", "Abraham", role = c("aut", "cre"),
            email = "louis.abraham@yahoo.fr")
 Description: R interface to the 'grecov' Python package for computing exact
