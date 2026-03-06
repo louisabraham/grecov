@@ -551,7 +551,7 @@ def _solve_endpoint_mass(sign: float, ctx: MassContext) -> tuple[float, np.ndarr
         return p, explored_mass
 
     def objective(x):
-        p, _ = evaluate(x)
+        p = param.to_p(x)
         return float(sign * v @ p)
 
     def mass_fun(x):
