@@ -22,6 +22,20 @@
 
 namespace nb = nanobind;
 
+// ─── MSVC compatibility ─────────────────────────────────────────────
+
+#ifdef _MSC_VER
+#define NOINLINE __declspec(noinline)
+#define UNREACHABLE() __assume(false)
+#define LIKELY(x) (x)
+#define UNLIKELY(x) (x)
+#else
+#define NOINLINE __attribute__((noinline))
+#define UNREACHABLE() __builtin_unreachable()
+#define LIKELY(x) __builtin_expect(!!(x), 1)
+#define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#endif
+
 // ─── Shared hash finalizer ──────────────────────────────────────────
 
 inline size_t murmur_mix64(uint64_t x) {
@@ -84,10 +98,77 @@ template <int D> struct Pack16 {
   static inline size_t hash(State x) { return murmur_mix64(x); }
 };
 
-// 16-bit per dimension, __uint128_t (d 5-8, n>255)
-// big-endian: dim 0 at bits 112-127, dim 7 at bits 0-15
+// 128-bit unsigned integer for packing d 5-8 with 16-bit slots when n>255.
+// Uses __uint128_t on GCC/Clang, emulated struct on MSVC.
+// Layout: big-endian, dim 0 at bits 112-127, dim 7 at bits 0-15.
+// hi holds dims 0-3 (bits 64-127), lo holds dims 4-7 (bits 0-63).
+
+#ifdef _MSC_VER
+struct UInt128 {
+  uint64_t hi, lo;
+
+  bool operator==(const UInt128 &o) const { return hi == o.hi && lo == o.lo; }
+  bool operator!=(const UInt128 &o) const { return !(*this == o); }
+  bool operator>(const UInt128 &o) const {
+    return hi > o.hi || (hi == o.hi && lo > o.lo);
+  }
+};
+
+static inline UInt128 uint128_from_shift(int bit) {
+  if (bit >= 64)
+    return {uint64_t(1) << (bit - 64), 0};
+  else
+    return {0, uint64_t(1) << bit};
+}
+
+static inline UInt128 uint128_add(UInt128 a, UInt128 b) {
+  uint64_t lo = a.lo + b.lo;
+  uint64_t hi = a.hi + b.hi + (lo < a.lo ? 1 : 0);
+  return {hi, lo};
+}
+
+static inline UInt128 uint128_sub(UInt128 a, UInt128 b) {
+  uint64_t lo = a.lo - b.lo;
+  uint64_t hi = a.hi - b.hi - (a.lo < b.lo ? 1 : 0);
+  return {hi, lo};
+}
+#endif
+
 template <int D> struct Pack16x2 {
   static_assert(D >= 5 && D <= 8);
+
+#ifdef _MSC_VER
+  using State = UInt128;
+  static constexpr State EMPTY = {~uint64_t(0), ~uint64_t(0)};
+
+  static inline State pack(const int *c) {
+    State s = {0, 0};
+    for (int i = 0; i < D; ++i) {
+      int bit = (7 - i) * 16;
+      if (bit >= 64)
+        s.hi |= uint64_t(c[i]) << (bit - 64);
+      else
+        s.lo |= uint64_t(c[i]) << bit;
+    }
+    return s;
+  }
+  static inline void unpack(State s, int *c) {
+    for (int i = 0; i < D; ++i) {
+      int bit = (7 - i) * 16;
+      if (bit >= 64)
+        c[i] = static_cast<int>((s.hi >> (bit - 64)) & 0xFFFF);
+      else
+        c[i] = static_cast<int>((s.lo >> bit) & 0xFFFF);
+    }
+  }
+  static inline State neighbor(State s, int i, int j) {
+    return uint128_sub(uint128_add(s, uint128_from_shift((7 - i) * 16)),
+                       uint128_from_shift((7 - j) * 16));
+  }
+  static inline size_t hash(State x) {
+    return murmur_mix64(x.lo ^ (x.hi * 0x9e3779b97f4a7c15ULL));
+  }
+#else
   using State = __uint128_t;
   static constexpr State EMPTY = ~static_cast<State>(0);
 
@@ -115,6 +196,7 @@ template <int D> struct Pack16x2 {
     uint64_t hi = static_cast<uint64_t>(x >> 64);
     return murmur_mix64(lo ^ (hi * 0x9e3779b97f4a7c15ULL));
   }
+#endif
 };
 
 // ─── Open-addressing hash set (templated on packing) ────────────────
@@ -146,12 +228,12 @@ public:
   }
 
   bool insert(State key) {
-    if (__builtin_expect(size_ * 4 >= slots_.size() * 3, 0))
+    if (UNLIKELY(size_ * 4 >= slots_.size() * 3))
       grow();
     size_t idx = Pack::hash(key) & mask_;
     while (true) {
       const State &slot = slots_[idx];
-      if (__builtin_expect(slot == Pack::EMPTY, 1)) {
+      if (LIKELY(slot == Pack::EMPTY)) {
         slots_[idx] = key;
         ++size_;
         return true;
@@ -259,9 +341,8 @@ struct BFSResult {
 // ─── Templated tail BFS ────────────────────────────────────────────
 
 template <int D, typename Pack>
-__attribute__((noinline)) static BFSResult
-grecov_bfs_impl(const double *p, const double *v, double S_obs, int n,
-                double eps) {
+NOINLINE static BFSResult grecov_bfs_impl(const double *p, const double *v,
+                                          double S_obs, int n, double eps) {
   using State = typename Pack::State;
   using E = Entry<State>;
   using Cmp = EntryCompare<State>;
@@ -394,7 +475,7 @@ struct MassBFSResult {
 // ─── Templated mass BFS ───────────────────────────────────────────
 
 template <int D, typename Pack>
-__attribute__((noinline)) static MassBFSResult
+NOINLINE static MassBFSResult
 grecov_mass_bfs_impl(const double *p, const int *x_obs, int n, double eps,
                      double tie_margin) {
   using State = typename Pack::State;
@@ -550,7 +631,7 @@ static BFSResult grecov_bfs_dispatch(const std::vector<double> &p_raw,
     }
 #undef DISPATCH_BFS_16X2
   }
-  __builtin_unreachable();
+  UNREACHABLE();
 }
 
 static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
@@ -603,7 +684,7 @@ static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
     }
 #undef DISPATCH_MASS_16X2
   }
-  __builtin_unreachable();
+  UNREACHABLE();
 }
 
 // ─── nanobind module ───────────────────────────────────────────────
