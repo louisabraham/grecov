@@ -12,7 +12,7 @@ target_compile_features(_ext PRIVATE cxx_std_17)
 
 option(GRECOV_PROFILE "Build with profiling symbols and frame pointers" OFF)
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU|Emscripten")
   target_compile_options(_ext PRIVATE -ffast-math)
   if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_compile_options(_ext PRIVATE -fexceptions)
