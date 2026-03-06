@@ -2,7 +2,11 @@
 
 import numpy as np
 import pytest
-from scipy.differentiate import hessian, jacobian
+
+try:
+    from scipy.differentiate import hessian, jacobian
+except (ImportError, ModuleNotFoundError):
+    pytest.skip("scipy.differentiate not available", allow_module_level=True)
 
 from grecov.bfs import grecov_bfs as py_bfs
 from grecov.solver import _softmax, tail_gradient, tail_hessian
