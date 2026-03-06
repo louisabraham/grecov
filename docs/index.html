@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>grecov — Multinomial CI Calculator</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --card: #fff;
+    --border: #ddd;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --text: #1a1a1a;
+    --muted: #666;
+    --success: #16a34a;
+    --error: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111;
+      --card: #1a1a1a;
+      --border: #333;
+      --text: #e5e5e5;
+      --muted: #999;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 2rem 1rem;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+  }
+  h1 a { color: var(--accent); text-decoration: none; }
+  h1 a:hover { text-decoration: underline; }
+  .subtitle { color: var(--muted); margin-bottom: 1.5rem; font-size: 0.9rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--muted);
+  }
+  input, select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background: var(--bg);
+    color: var(--text);
+    margin-bottom: 0.75rem;
+  }
+  input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+  .row > div > :last-child { margin-bottom: 0; }
+  button {
+    width: 100%;
+    padding: 0.65rem;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  button:hover:not(:disabled) { background: var(--accent-hover); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #status {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
+  #status.ready { color: var(--success); }
+  #status.error { color: var(--error); }
+  #result {
+    display: none;
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.9rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  #result.visible { display: block; }
+  .ci-highlight {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-align: center;
+    margin-bottom: 0.75rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+  .detail { color: var(--muted); font-size: 0.8rem; }
+  .help {
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: -0.5rem;
+    margin-bottom: 0.75rem;
+  }
+</style>
+</head>
+<body>
+
+<h1><a href="https://github.com/louisabraham/grecov">grecov</a> Calculator</h1>
+<p class="subtitle">Exact confidence intervals for multinomial weighted sums</p>
+
+<div id="status">Loading Pyodide...</div>
+
+<div class="card">
+  <label for="counts">Counts</label>
+  <input type="text" id="counts" value="10, 10, 20, 60" placeholder="e.g. 10, 10, 20, 60">
+  <p class="help">Comma-separated observed category counts</p>
+
+  <label for="values">Values</label>
+  <input type="text" id="values" value="1, 2, 3, 4" placeholder="e.g. 1, 2, 3, 4">
+  <p class="help">Comma-separated numerical value for each category</p>
+
+  <div class="row">
+    <div>
+      <label for="alpha">Alpha</label>
+      <input type="number" id="alpha" value="0.05" min="0.001" max="0.5" step="0.01">
+    </div>
+    <div>
+      <label for="method">Method</label>
+      <select id="method">
+        <option value="equal_tail" selected>equal_tail</option>
+        <option value="greedy">greedy</option>
+      </select>
+    </div>
+  </div>
+
+  <label for="eps_ratio">Eps ratio</label>
+  <input type="number" id="eps_ratio" value="0.001" min="0.00001" max="0.1" step="0.0001">
+  <p class="help">BFS stopping tolerance as fraction of alpha</p>
+
+  <button id="compute" disabled>Compute</button>
+</div>
+
+<div class="card" id="result-card" style="display:none">
+  <div id="result"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
+<script type="module">
+const status = document.getElementById("status");
+const btn = document.getElementById("compute");
+const resultDiv = document.getElementById("result");
+const resultCard = document.getElementById("result-card");
+
+let pyodide;
+
+async function init() {
+  try {
+    pyodide = await loadPyodide();
+    status.textContent = "Installing packages...";
+    await pyodide.loadPackage(["micropip", "numpy", "scipy"]);
+
+    const res = await fetch(
+      "https://api.github.com/repos/louisabraham/grecov/releases/latest"
+    );
+    const release = await res.json();
+    const wheel = release.assets.find((a) => a.name.includes("pyodide"));
+
+    if (!wheel) {
+      status.textContent = "No pyodide wheel found in latest release";
+      status.className = "error";
+      return;
+    }
+
+    await pyodide.runPythonAsync(`
+import micropip
+await micropip.install("${wheel.browser_download_url}")
+from grecov import multinomial_ci
+    `);
+
+    status.textContent = "Ready";
+    status.className = "ready";
+    btn.disabled = false;
+  } catch (e) {
+    status.textContent = "Failed to load: " + e.message;
+    status.className = "error";
+    console.error(e);
+  }
+}
+
+btn.addEventListener("click", async () => {
+  btn.disabled = true;
+  btn.textContent = "Computing...";
+  resultCard.style.display = "none";
+
+  try {
+    const counts = document.getElementById("counts").value;
+    const values = document.getElementById("values").value;
+    const alpha = document.getElementById("alpha").value;
+    const method = document.getElementById("method").value;
+    const eps_ratio = document.getElementById("eps_ratio").value;
+
+    const output = await pyodide.runPythonAsync(`
+import json
+result = multinomial_ci(
+    counts=[${counts}],
+    values=[${values}],
+    alpha=${alpha},
+    method="${method}",
+    eps_ratio=${eps_ratio},
+)
+json.dumps({
+    "lower": result["lower"],
+    "upper": result["upper"],
+    "p_lower": [float(x) for x in result["p_lower"]],
+    "p_upper": [float(x) for x in result["p_upper"]],
+    "bfs_calls": result["bfs_calls"],
+    "bfs_total_states": result["bfs_total_states"],
+})
+    `);
+
+    const r = JSON.parse(output);
+    const pct = ((1 - parseFloat(alpha)) * 100).toFixed(1).replace(/\.0$/, "");
+
+    resultDiv.innerHTML = `<div class="ci-highlight">${pct}% CI: [${r.lower.toFixed(6)}, ${r.upper.toFixed(6)}]</div>`
+      + `<span class="detail">p_lower: [${r.p_lower.map(x => x.toFixed(6)).join(", ")}]\n`
+      + `p_upper: [${r.p_upper.map(x => x.toFixed(6)).join(", ")}]\n`
+      + `BFS calls: ${r.bfs_calls}  |  States explored: ${r.bfs_total_states}</span>`;
+    resultDiv.className = "visible";
+    resultCard.style.display = "block";
+  } catch (e) {
+    resultDiv.innerHTML = `<span style="color:var(--error)">${e.message}</span>`;
+    resultDiv.className = "visible";
+    resultCard.style.display = "block";
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Compute";
+});
+
+// Allow Enter key to trigger compute
+document.querySelectorAll("input, select").forEach(el => {
+  el.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !btn.disabled) btn.click();
+  });
+});
+
+init();
+</script>
+</body>
+</html>

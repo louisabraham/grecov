@@ -112,28 +112,25 @@ grecov compiles to WebAssembly and runs in the browser via [Pyodide](https://pyo
 The C++ BFS extension compiles unchanged; cyipopt is **not** included (the scipy
 `trust-constr` fallback is used automatically).
 
-### Building the Pyodide wheel
-
-```bash
-pip install pyodide-build
-pyodide xbuildenv install
-pyodide build
-```
-
-This requires the matching Emscripten version (`pyodide config get emscripten_version`).
-Install it via [emsdk](https://github.com/emscripten-core/emsdk) and `source emsdk_env.sh`
-before running `pyodide build`. The wheel is written to `dist/`.
-
 ### Using in a webpage
+
+The pyodide wheel is attached to each [GitHub Release](https://github.com/louisabraham/grecov/releases).
+The following snippet automatically fetches the latest one:
 
 ```html
 <script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
 <script type="module">
 const pyodide = await loadPyodide();
-await pyodide.loadPackage(["numpy", "scipy"]);
+await pyodide.loadPackage(["micropip", "numpy", "scipy"]);
 
-// Load the grecov wheel (adjust path or URL to where you host it)
-await pyodide.loadPackage("./grecov-0.2.0-cp312-cp312-pyodide_2024_0_wasm32.whl");
+// Find and install the latest pyodide wheel from GitHub Releases
+const res = await fetch("https://api.github.com/repos/louisabraham/grecov/releases/latest");
+const release = await res.json();
+const wheel = release.assets.find(a => a.name.includes("pyodide"));
+await pyodide.runPythonAsync(`
+    import micropip
+    await micropip.install("${wheel.browser_download_url}")
+`);
 
 pyodide.runPython(`
 from grecov import multinomial_ci
@@ -146,6 +143,18 @@ print(f"95% CI: [{result['lower']:.4f}, {result['upper']:.4f}]")
 `);
 </script>
 ```
+
+### Building the Pyodide wheel locally
+
+```bash
+pip install pyodide-build
+pyodide xbuildenv install
+pyodide build
+```
+
+This requires the matching Emscripten version (`pyodide config get emscripten_version`).
+Install it via [emsdk](https://github.com/emscripten-core/emsdk) and `source emsdk_env.sh`
+before running `pyodide build`. The wheel is written to `dist/`.
 
 ### Performance
 
