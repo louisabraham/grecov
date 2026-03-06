@@ -1,10 +1,14 @@
 """Smoke tests that all public interfaces work without errors."""
 
+import platform
+
 import numpy as np
 import pytest
 
 from grecov.bfs import grecov_bfs, grecov_mass_bfs
 from grecov.solver import confidence_interval
+
+IS_EMSCRIPTEN = platform.system() == "Emscripten"
 
 
 # ── BFS interfaces ──────────────────────────────────────────────────
@@ -131,21 +135,25 @@ def test_ci_k1_raises():
         confidence_interval([10], [0], alpha=0.05, method="equal_tail")
 
 
+@pytest.mark.skipif(IS_EMSCRIPTEN, reason="C++ exceptions crash pyodide")
 def test_ci_d9_equal_tail_raises():
     with pytest.raises(RuntimeError, match="dimension must be between 2 and 8"):
         confidence_interval([1] * 9, list(range(9)), alpha=0.05, method="equal_tail")
 
 
+@pytest.mark.skipif(IS_EMSCRIPTEN, reason="C++ exceptions crash pyodide")
 def test_ci_d9_mass_raises():
     with pytest.raises(RuntimeError, match="dimension must be between 2 and 8"):
         confidence_interval([1] * 9, list(range(9)), alpha=0.05, method="mass")
 
 
+@pytest.mark.skipif(IS_EMSCRIPTEN, reason="C++ exceptions crash pyodide")
 def test_ci_n_too_large_equal_tail_raises():
     with pytest.raises(RuntimeError, match="n must be <= 65535"):
         confidence_interval([33000, 33000], [0, 1], alpha=0.05, method="equal_tail")
 
 
+@pytest.mark.skipif(IS_EMSCRIPTEN, reason="C++ exceptions crash pyodide")
 def test_ci_n_too_large_mass_raises():
     with pytest.raises(RuntimeError, match="n must be <= 65535"):
         confidence_interval([33000, 33000], [0, 1], alpha=0.05, method="mass")
