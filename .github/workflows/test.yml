@@ -41,8 +41,8 @@ jobs:
 
       - uses: r-lib/actions/setup-r@v2
 
-      - name: Install IPOPT
-        run: sudo apt-get install -y coinor-libipopt-dev liblapack-dev libblas-dev
+      - name: Install system dependencies
+        run: sudo apt-get install -y coinor-libipopt-dev liblapack-dev libblas-dev libpng-dev
 
       - name: Install Python package
         run: |
@@ -57,5 +57,7 @@ jobs:
         run: R CMD INSTALL r-package
 
       - name: Run R tests
+        env:
+          RETICULATE_PYTHON: ${{ env.pythonLocation }}/bin/python
         run: |
           Rscript -e 'testthat::test_dir("r-package/tests/testthat")'
