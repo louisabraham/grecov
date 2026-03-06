@@ -1,10 +1,14 @@
 """Smoke tests that all public interfaces work without errors."""
 
+import sys
+
 import numpy as np
 import pytest
 
 from grecov.bfs import grecov_bfs, grecov_mass_bfs
 from grecov.solver import multinomial_ci
+
+_is_emscripten = sys.platform == "emscripten"
 
 
 # ── BFS interfaces ──────────────────────────────────────────────────
@@ -131,21 +135,25 @@ def test_ci_k1_raises():
         multinomial_ci([10], [0], alpha=0.05, method="equal_tail")
 
 
+@pytest.mark.skipif(_is_emscripten, reason="C++ exceptions crash Pyodide")
 def test_ci_d9_equal_tail_raises():
     with pytest.raises(RuntimeError, match="dimension must be between 2 and 8"):
         multinomial_ci([1] * 9, list(range(9)), alpha=0.05, method="equal_tail")
 
 
+@pytest.mark.skipif(_is_emscripten, reason="C++ exceptions crash Pyodide")
 def test_ci_d9_greedy_raises():
     with pytest.raises(RuntimeError, match="dimension must be between 2 and 8"):
         multinomial_ci([1] * 9, list(range(9)), alpha=0.05, method="greedy")
 
 
+@pytest.mark.skipif(_is_emscripten, reason="C++ exceptions crash Pyodide")
 def test_ci_n_too_large_equal_tail_raises():
     with pytest.raises(RuntimeError, match="n must be <= 65535"):
         multinomial_ci([33000, 33000], [0, 1], alpha=0.05, method="equal_tail")
 
 
+@pytest.mark.skipif(_is_emscripten, reason="C++ exceptions crash Pyodide")
 def test_ci_n_too_large_greedy_raises():
     with pytest.raises(RuntimeError, match="n must be <= 65535"):
         multinomial_ci([33000, 33000], [0, 1], alpha=0.05, method="greedy")

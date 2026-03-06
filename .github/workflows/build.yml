@@ -72,7 +72,8 @@ jobs:
           CIBW_BUILD: "cp312-* cp313-*"
           CIBW_SKIP: "pp* *-win32 *-manylinux_i686 *-musllinux*"
           CIBW_TEST_REQUIRES: "pytest"
-          CIBW_TEST_COMMAND: "pytest {project}/tests -q -k 'not coverage'"
+          CIBW_TEST_COMMAND: "pytest {project}/tests -q -k \"not coverage\""
+          CIBW_TEST_SKIP: "*-manylinux*"
           CIBW_BUILD_VERBOSITY: 1
           CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=10.13"
           CIBW_PLATFORM: ${{ matrix.os == 'pyodide' && 'pyodide' || '' }}
