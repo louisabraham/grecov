@@ -385,7 +385,8 @@ def _run_ipopt(
         bounds=opt_bounds,
         options=opts,
     )
-    assert result.success, "Optimization failed"
+    if not result.success:
+        raise RuntimeError(f"Optimization failed: {result.message}")
     return result
 
 
@@ -441,13 +442,58 @@ def _run_trust_constr(
         bounds=opt_bounds,
         options={"maxiter": 1000, "disp": opt_verbose},
     )
-    assert result.success, "Optimization failed"
+    if not result.success:
+        raise RuntimeError(f"Optimization failed: {result.message}")
+    return result
+
+
+def _run_slsqp(
+    objective, objective_jac, x0, constraints, opt_bounds, opt_verbose, obj_hess
+):
+    slsqp_cons = [{k: v for k, v in c.items() if k != "hess"} for c in constraints]
+    best_x = None
+    best_fun = float("inf")
+
+    def _tracking_objective(x):
+        nonlocal best_x, best_fun
+        f = objective(x)
+        feasible = all(c["fun"](x) >= 0 for c in slsqp_cons if c["type"] == "ineq")
+        if feasible and f < best_fun:
+            best_x = x.copy()
+            best_fun = f
+        return f
+
+    x = x0.copy()
+    for _attempt in range(3):
+        result = minimize(
+            _tracking_objective,
+            x,
+            method="SLSQP",
+            jac=objective_jac,
+            constraints=slsqp_cons,
+            bounds=opt_bounds,
+            options={"maxiter": 1000, "ftol": 1e-10, "disp": opt_verbose},
+        )
+        if result.success:
+            return result
+        if best_x[0] is not None:
+            x = best_x[0]
+        else:
+            break
+    # Return best feasible point if we have one
+    if best_x is not None:
+        result.x = best_x
+        result.fun = best_fun
+        result.success = True
+    else:
+        raise RuntimeError(f"Optimization failed: {result.message}")
     return result
 
 
 _OPTIMIZER_BACKENDS = {
     "ipopt": _run_ipopt,
     "trust-constr": _run_trust_constr,
+    "slsqp": _run_slsqp,
 }
 
 
@@ -638,7 +684,9 @@ def multinomial_ci(
         if optimizer is None:
             optimizer = "ipopt" if minimize_ipopt is not None else "trust-constr"
         if param is None:
-            param = {"ipopt": "direct", "trust-constr": "logit"}[optimizer]
+            param = {"ipopt": "direct", "trust-constr": "logit", "slsqp": "logit"}[
+                optimizer
+            ]
         bfs_impl = _bfs_py if use_python or _bfs_ext is None else _bfs_ext
     else:  # greedy
         if optimizer is None:
