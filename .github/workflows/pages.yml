@@ -30,8 +30,8 @@ jobs:
 
       - name: Test
         run: |
-          pip install pytest
           pyodide venv .venv-pyodide
+          .venv-pyodide/bin/pip install pytest dist/*.whl
           .venv-pyodide/bin/python -m pytest tests -q -k "not coverage"
 
       - name: Assemble site
