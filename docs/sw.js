@@ -36,6 +36,6 @@ self.addEventListener("fetch", (e) => {
           return resp;
         });
       })
-    ).catch(() => fetch(e.request)) // fallback to network if cache API fails
+    )
   );
 });
