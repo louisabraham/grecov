@@ -590,7 +590,21 @@ def _solve_endpoint_tail(sign: float, ctx: TailContext) -> tuple[float, np.ndarr
         ctx.opt_verbose,
         obj_hess,
     )
-    return result.fun, param.to_p(result.x)
+
+    # Feasibility check: verify both tail probabilities at the solution.
+    # trust-constr can return success=True with violated constraints
+    # (e.g. xtol termination with constr_violation > 0).
+    p_sol = param.to_p(result.x)
+    bfs_check = _run_tail_bfs(p_sol, ctx)
+    tol = ctx.eps
+    if bfs_check.prob_left < ctx.bound - tol or bfs_check.prob_right < ctx.bound - tol:
+        raise RuntimeError(
+            f"Optimizer returned infeasible point: "
+            f"P_left={bfs_check.prob_left:.6g}, P_right={bfs_check.prob_right:.6g}, "
+            f"bound={ctx.bound:.6g}"
+        )
+
+    return result.fun, p_sol
 
 
 # ── Mass endpoint solver ─────────────────────────────────────────────────────
@@ -624,6 +638,8 @@ def _solve_endpoint_mass(sign: float, ctx: MassContext) -> tuple[float, np.ndarr
         tol=0.005,
         recombination=0.9,
     )
+    if not result.success:
+        raise RuntimeError(f"Optimization failed: {result.message}")
     return result.fun, param.to_p(result.x)
 
 
