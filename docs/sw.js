@@ -22,22 +22,20 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = e.request.url;
 
-  // Pyodide CDN assets and local assets: cache-first
-  if (url.startsWith(PYODIDE_CDN) || new URL(url).origin === self.location.origin) {
-    e.respondWith(
-      caches.open(CACHE).then((cache) =>
-        cache.match(e.request).then((cached) => {
-          if (cached) return cached;
-          return fetch(e.request).then((resp) => {
-            if (resp.ok) cache.put(e.request, resp.clone());
-            return resp;
-          });
-        })
-      )
-    );
-    return;
+  // Only intercept Pyodide CDN and same-origin requests
+  if (!url.startsWith(PYODIDE_CDN) && new URL(url).origin !== self.location.origin) {
+    return; // let the browser handle it
   }
 
-  // Everything else: network only
-  e.respondWith(fetch(e.request));
+  e.respondWith(
+    caches.open(CACHE).then((cache) =>
+      cache.match(e.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(e.request).then((resp) => {
+          if (resp.ok) cache.put(e.request, resp.clone());
+          return resp;
+        });
+      })
+    ).catch(() => fetch(e.request)) // fallback to network if cache API fails
+  );
 });
