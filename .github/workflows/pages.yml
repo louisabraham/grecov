@@ -38,6 +38,7 @@ jobs:
         run: |
           mkdir _site
           cp docs/index.html _site/
+          sed "s/__CACHE_VERSION__/${{ github.sha }}/" docs/sw.js > _site/sw.js
           cp dist/*.whl _site/
           echo "$(ls _site/*.whl | xargs -n1 basename)" > _site/wheel.txt
 

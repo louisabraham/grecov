@@ -1,0 +1,43 @@
+const CACHE = "grecov-__CACHE_VERSION__";
+const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/";
+
+// Assets to pre-cache on install (small, critical)
+const PRECACHE = ["./", "./index.html", "./wheel.txt"];
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(
+    caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener("activate", (e) => {
+  // Remove old caches
+  e.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
+    ).then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (e) => {
+  const url = e.request.url;
+
+  // Pyodide CDN assets and local assets: cache-first
+  if (url.startsWith(PYODIDE_CDN) || new URL(url).origin === self.location.origin) {
+    e.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match(e.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(e.request).then((resp) => {
+            if (resp.ok) cache.put(e.request, resp.clone());
+            return resp;
+          });
+        })
+      )
+    );
+    return;
+  }
+
+  // Everything else: network only
+  e.respondWith(fetch(e.request));
+});

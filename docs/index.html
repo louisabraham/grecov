@@ -254,6 +254,10 @@ document.querySelectorAll("input, select").forEach(el => {
   });
 });
 
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("./sw.js");
+}
+
 init();
 </script>
 </body>
