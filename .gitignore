@@ -12,3 +12,4 @@ wheelhouse/
 .ruff_cache/
 *.trace/
 *.xml
+.DS_Store
