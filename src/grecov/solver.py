@@ -450,6 +450,15 @@ def _run_trust_constr(
 def _run_slsqp(
     objective, objective_jac, x0, constraints, opt_bounds, opt_verbose, obj_hess
 ):
+    """SLSQP backend with restart from best feasible point.
+
+    SLSQP can overshoot into infeasible regions where constraint gradients
+    vanish, causing it to get stuck.  To handle this, we track the best
+    feasible point seen during optimization.  If SLSQP fails, we restart
+    from that point (up to 3 attempts).  A single restart is usually
+    sufficient since it places the initial point right at the constraint
+    boundary.
+    """
     slsqp_cons = [{k: v for k, v in c.items() if k != "hess"} for c in constraints]
     best_x = None
     best_fun = float("inf")
@@ -476,8 +485,8 @@ def _run_slsqp(
         )
         if result.success:
             return result
-        if best_x[0] is not None:
-            x = best_x[0]
+        if best_x is not None:
+            x = best_x
         else:
             break
     # Return best feasible point if we have one
