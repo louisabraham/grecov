@@ -707,7 +707,7 @@ def multinomial_ci(
     # -- Resolve defaults ------------------------------------------------------
     if method == "equal_tail":
         if optimizer is None:
-            optimizer = "ipopt" if minimize_ipopt is not None else "trust-constr"
+            optimizer = "ipopt" if minimize_ipopt is not None else "slsqp"
         if param is None:
             param = {"ipopt": "direct", "trust-constr": "logit", "slsqp": "logit"}[
                 optimizer
