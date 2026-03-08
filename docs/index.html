@@ -165,8 +165,8 @@
   <div id="result"></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js"></script>
 <script type="module">
+const PYODIDE_JS = "https://cdn.jsdelivr.net/pyodide/v0.27.7/full/pyodide.js";
 const status = document.getElementById("status");
 const btn = document.getElementById("compute");
 const resultDiv = document.getElementById("result");
@@ -174,8 +174,33 @@ const resultCard = document.getElementById("result-card");
 
 let pyodide;
 
+async function setupServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+  await navigator.serviceWorker.register("./sw.js");
+  if (navigator.serviceWorker.controller) return;
+  return new Promise((resolve) => {
+    navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true });
+  });
+}
+
+async function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
 async function init() {
   try {
+    // Wait for SW to control the page so all fetches go through the cache
+    await setupServiceWorker();
+
+    status.textContent = "Loading Pyodide...";
+    await loadScript(PYODIDE_JS);
+
     pyodide = await loadPyodide();
     status.textContent = "Installing packages...";
     await pyodide.loadPackage(["micropip", "numpy", "scipy"]);
@@ -253,10 +278,6 @@ document.querySelectorAll("input, select").forEach(el => {
     if (e.key === "Enter" && !btn.disabled) btn.click();
   });
 });
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js");
-}
 
 init();
 </script>
