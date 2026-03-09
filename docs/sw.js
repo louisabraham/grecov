@@ -32,7 +32,8 @@ self.addEventListener("fetch", (e) => {
       cache.match(e.request).then((cached) => {
         if (cached) return cached;
         return fetch(e.request).then((resp) => {
-          if (resp.ok) cache.put(e.request, resp.clone());
+          // Cache successful responses and opaque responses (cross-origin no-cors)
+          if (resp.ok || resp.type === "opaque") cache.put(e.request, resp.clone());
           return resp;
         });
       })
