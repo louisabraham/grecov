@@ -656,7 +656,7 @@ def multinomial_ci(
     verbose=0,
     optimizer: str | None = None,
     param: str | None = None,
-    pmin: float = 1e-8,
+    pmin: float = 1e-6,
     theta_max: float = 10.0,
     tie_margin: float = 1e-8,
     use_python: bool = False,
