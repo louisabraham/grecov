@@ -13,21 +13,20 @@ from grecov.solver import multinomial_ci
 
 # ── 1D explored mass plot ────────────────────────────────────────────────────
 
-x_obs_1d = [25, 50]
 xs_1d = np.linspace(0.01, 0.99, 200)
+for x_obs_1d in [[0, 50], [25, 50]]:
+    explored_mass_1d = []
+    for x in xs_1d:
+        res = grecov_mass_bfs([1 - x, x], x_obs_1d)
+        explored_mass_1d.append(res["explored_mass"])
 
-explored_mass_1d = []
-for x in xs_1d:
-    res = grecov_mass_bfs([1 - x, x], x_obs_1d)
-    explored_mass_1d.append(res["explored_mass"])
-
-fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-ax.plot(xs_1d, explored_mass_1d)
-ax.set_xlabel(r"$p$")
-ax.set_ylabel(r"explored mass")
-ax.set_title(rf"grecov_mass_bfs with $x_\mathrm{{obs}} = {x_obs_1d!r}$")
-plt.tight_layout()
-plt.show()
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    ax.plot(xs_1d, explored_mass_1d)
+    ax.set_xlabel(r"$p$")
+    ax.set_ylabel(r"explored mass")
+    ax.set_title(rf"grecov_mass_bfs with $x_\mathrm{{obs}} = {x_obs_1d!r}$")
+    plt.tight_layout()
+    plt.show()
 
 # %%
 # ── Shared setup ─────────────────────────────────────────────────────────────
