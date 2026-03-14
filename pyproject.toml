@@ -27,6 +27,9 @@ test = ["pytest>=7.0"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.cibuildwheel.pyodide]
+build-frontend = "build"
+
 [tool.scikit-build]
 wheel.packages = ["src/grecov"]
 cmake.build-type = "Release"

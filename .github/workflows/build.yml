@@ -3,6 +3,7 @@ name: Build and publish
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -71,7 +72,7 @@ jobs:
           restore-keys: cibw-${{ matrix.os }}-
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.23
+        uses: pypa/cibuildwheel@v3.4
         env:
           CIBW_BUILD: "cp312-* cp313-*"
           CIBW_SKIP: "pp* *-win32 *-manylinux_i686 *-musllinux*"
@@ -84,6 +85,27 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  build_wheels_pyodide:
+    name: Wheels (pyodide)
+    needs: [check_version]
+    if: needs.check_version.outputs.new_version == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v3.4
+        env:
+          CIBW_PLATFORM: pyodide
+          CIBW_TEST_REQUIRES: "pytest"
+          CIBW_TEST_COMMAND: "pytest {project}/tests -q -k \"not coverage\""
+          CIBW_BUILD_VERBOSITY: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-pyodide
           path: wheelhouse/*.whl
 
   build_sdist:
@@ -101,7 +123,7 @@ jobs:
 
   publish:
     name: Publish
-    needs: [build_wheels, build_sdist, check_version]
+    needs: [build_wheels, build_wheels_pyodide, build_sdist, check_version]
     runs-on: ubuntu-latest
     environment: pypi
     steps:
