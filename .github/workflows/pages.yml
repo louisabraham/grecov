@@ -28,6 +28,17 @@ jobs:
           pip install pyodide-build
           pyodide build
 
+      - name: Download cyipopt pyodide wheel
+        run: |
+          PYODIDE_VERSION=$(pyodide config get version)
+          PYODIDE_YEAR=${PYODIDE_VERSION%%.*}
+          PY_VERSION=$(pyodide config get python_version | sed 's/\.//')
+          PY_VERSION=${PY_VERSION%?}
+          WHEEL_NAME="cyipopt-1.7.0.dev0-cp${PY_VERSION}-cp${PY_VERSION}-pyodide_${PYODIDE_YEAR}_0_wasm32.whl"
+          curl -sfL -o "dist/${WHEEL_NAME}" \
+            "https://github.com/louisabraham/cyipopt/releases/download/v1.7.0.dev0/${WHEEL_NAME}" \
+            || echo "Warning: cyipopt wheel not found for this Pyodide version"
+
       - name: Test
         run: |
           pyodide venv .venv-pyodide
