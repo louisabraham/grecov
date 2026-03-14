@@ -210,10 +210,12 @@ async function init() {
     status.textContent = "Installing packages...";
     await pyodide.loadPackage(["micropip", "numpy", "scipy"]);
 
-    const wheelName = (await (await fetch("./wheel.txt")).text()).trim();
+    const wheelNames = (await (await fetch("./wheel.txt")).text()).trim().split("\n");
     await pyodide.runPythonAsync(`
 import micropip
-await micropip.install("./${wheelName}")
+wheel_names = ${JSON.stringify(wheelNames)}
+for name in wheel_names:
+    await micropip.install("./" + name)
 from grecov import multinomial_ci
     `);
 
