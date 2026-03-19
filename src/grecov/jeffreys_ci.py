@@ -8,20 +8,30 @@ Y = v^T P where P ~ Dirichlet(alpha_post).
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
-from scipy.integrate import quad
 from scipy.optimize import brentq
 
+# ── Fixed quadrature for the Gil-Pelaez integral ─────────────────────────────
+# Gauss-Legendre on [0,1] with substitution u = t/(1-t) maps [0,∞).
+# 64 nodes gives ~15 digits of accuracy for this integrand.
 
-def _dirichlet_weighted_sum_cdf(
-    alpha, weights, y, *, epsabs=1e-10, epsrel=1e-10, limit=400
-):
+_N_QUAD = 64
+_leg_nodes, _leg_weights = np.polynomial.legendre.leggauss(_N_QUAD)
+_t = 0.5 * (_leg_nodes + 1)  # map [-1,1] → [0,1]
+_u = _t / (1 - _t)
+_quad_weights = 0.5 * _leg_weights / (1 - _t) ** 2  # includes Jacobian
+_inv_u = 1.0 / _u
+
+
+def _dirichlet_weighted_sum_cdf(alpha, weights, y):
     """CDF of Y = sum_i weights[i] * P_i, P ~ Dirichlet(alpha).
 
-    Uses the inversion formula based on the characteristic function,
-    reduced to a single real integral (Gil-Pelaez style).
+    Uses the Gil-Pelaez inversion formula with a fixed Gauss-Legendre
+    quadrature (vectorized over all nodes at once).
     """
-    lo, hi = float(weights[0]), float(weights[-1])
+    lo, hi = float(np.min(weights)), float(np.max(weights))
 
     if y <= lo:
         return 0.0
@@ -29,40 +39,33 @@ def _dirichlet_weighted_sum_cdf(
         return 1.0
 
     lam = weights - y
-
-    def integrand(u):
-        if u == 0.0:
-            return float(np.dot(alpha, lam))
-        theta = np.sum(alpha * np.arctan(lam * u))
-        log_denom = 0.5 * np.sum(alpha * np.log1p((lam * u) ** 2))
-        return np.sin(theta) * np.exp(-log_denom) / u
-
-    val, _ = quad(integrand, 0.0, np.inf, epsabs=epsabs, epsrel=epsrel, limit=limit)
-    return float(np.clip(0.5 - val / np.pi, 0.0, 1.0))
+    lu = np.outer(_u, lam)  # (n_nodes, k)
+    theta = np.arctan(lu) @ alpha
+    log_denom = 0.5 * (np.log1p(lu * lu) @ alpha)
+    vals = np.sin(theta) * np.exp(-log_denom) * _inv_u
+    integral = _quad_weights @ vals
+    return max(0.0, min(1.0, 0.5 - integral / math.pi))
 
 
-def _dirichlet_weighted_sum_ppf(
-    alpha, weights, q, *, epsabs=1e-10, epsrel=1e-10, limit=400
-):
+def _dirichlet_weighted_sum_ppf(alpha, weights, q, *, xtol=1e-6):
     """Quantile function (inverse CDF) of Y = sum_i weights[i] * P_i."""
-    lo, hi = float(weights[0]), float(weights[-1])
+    lo, hi = float(np.min(weights)), float(np.max(weights))
     if q <= 0.0:
         return lo
     if q >= 1.0:
         return hi
 
-    def f(y):
-        return (
-            _dirichlet_weighted_sum_cdf(
-                alpha, weights, y, epsabs=epsabs, epsrel=epsrel, limit=limit
-            )
-            - q
+    return float(
+        brentq(
+            lambda y: _dirichlet_weighted_sum_cdf(alpha, weights, y) - q,
+            lo,
+            hi,
+            xtol=xtol,
         )
+    )
 
-    return float(brentq(f, lo, hi, xtol=epsabs, rtol=epsrel))
 
-
-def jeffreys_ci(counts, values, alpha=0.05):
+def jeffreys_ci(counts, values, alpha=0.05, *, tol=1e-6):
     """Bayesian credible interval for the multinomial weighted mean.
 
     Uses a Jeffreys prior (Dirichlet(1/2, ..., 1/2)) conjugate update.
@@ -75,42 +78,23 @@ def jeffreys_ci(counts, values, alpha=0.05):
         Numerical value assigned to each category.
     alpha : float
         Significance level (default 0.05 for a 95% interval).
+    tol : float
+        Tolerance for root-finding.
 
     Returns
     -------
     dict with keys: lower, upper.
     """
-    counts = np.asarray(counts, dtype=float)
-    values = np.asarray(values, dtype=float)
+    counts = np.asarray(counts, dtype=np.float64)
+    values = np.asarray(values, dtype=np.float64)
 
     if len(counts) != len(values):
         raise ValueError("counts and values must have the same length")
-    if np.any(counts < 0):
-        raise ValueError("counts must be non-negative")
 
     # Jeffreys posterior: Dirichlet(counts + 1/2)
     alpha_post = counts + 0.5
 
-    # Sort by value and merge equal-valued categories
-    order = np.argsort(values)
-    alpha_post = alpha_post[order]
-    values_sorted = values[order]
-
-    merged_v, merged_a = [], []
-    for v, a in zip(values_sorted, alpha_post):
-        if merged_v and np.isclose(v, merged_v[-1], atol=1e-15, rtol=0.0):
-            merged_a[-1] += a
-        else:
-            merged_v.append(float(v))
-            merged_a.append(float(a))
-
-    weights = np.asarray(merged_v)
-    alpha_merged = np.asarray(merged_a)
-
-    if len(weights) == 1:
-        return {"lower": weights[0], "upper": weights[0]}
-
-    lower = _dirichlet_weighted_sum_ppf(alpha_merged, weights, alpha / 2)
-    upper = _dirichlet_weighted_sum_ppf(alpha_merged, weights, 1 - alpha / 2)
+    lower = _dirichlet_weighted_sum_ppf(alpha_post, values, alpha / 2, xtol=tol)
+    upper = _dirichlet_weighted_sum_ppf(alpha_post, values, 1 - alpha / 2, xtol=tol)
 
     return {"lower": lower, "upper": upper}

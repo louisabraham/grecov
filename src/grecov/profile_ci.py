@@ -3,86 +3,61 @@
 Inverts the profile likelihood ratio test statistic for mu = v^T p,
 using the chi-squared(1) critical value. The profile LR is computed
 in closed form using the dual (Lagrangian) formulation.
+
+Uses pure-Python arithmetic to avoid numpy overhead on small arrays.
 """
 
 from __future__ import annotations
 
-import numpy as np
+import math
+
 from scipy.optimize import brentq
 from scipy.stats import chi2
 
 
-def _lambda_root(phat, a, tol=1e-12):
-    """Solve for the Lagrange multiplier in the interior case.
-
-    Finds lambda such that sum_i phat_i * a_i / (1 + lambda * a_i) = 0,
-    where a_i = x_i - mu and phat_i = c_i / n (restricted to positive counts).
-    """
-    g0 = np.sum(phat * a)
-    if abs(g0) < tol:
-        return 0.0
-
-    pos = a > 0
-    neg = a < 0
-
-    lower = float(np.max(-1.0 / a[pos])) if np.any(pos) else -np.inf
-    upper = float(np.min(-1.0 / a[neg])) if np.any(neg) else np.inf
-
-    # Move strictly inside the feasible interval
-    lower = np.nextafter(lower, np.inf) if np.isfinite(lower) else -1e12
-    upper = np.nextafter(upper, -np.inf) if np.isfinite(upper) else 1e12
-
-    def g(lam):
-        den = 1.0 + lam * a
-        if np.any(den <= 0):
-            j = np.where(den <= 0)[0][0]
-            return np.sign(a[j]) * np.inf
-        return np.sum(phat * a / den)
-
-    return brentq(g, lower, upper)
-
-
-def _profile_lr(counts, values, mu):
+def _profile_lr(c_pos, x_pos, phat, xmin, xmax, mu):
     """Profile likelihood ratio statistic -2 log R(mu).
 
-    Parameters
-    ----------
-    counts : np.ndarray
-        Observed counts (may contain zeros).
-    values : np.ndarray
-        Category values.
-    mu : float
-        Hypothesized mean.
-
-    Returns
-    -------
-    float
-        The profile LR statistic (non-negative; inf if mu is outside support).
+    All inputs are plain Python lists (positive-count categories only).
     """
-    xmin, xmax = float(values.min()), float(values.max())
     if not (xmin < mu < xmax):
-        return np.inf
+        return float("inf")
 
-    mask = counts > 0
-    c = counts[mask]
-    xs = values[mask]
-    n = c.sum()
-    phat = c / n
-    a = xs - mu
+    a = [xi - mu for xi in x_pos]
+    lo_x = min(x_pos)
+    hi_x = max(x_pos)
 
-    lo, hi = float(xs.min()), float(xs.max())
+    if lo_x <= mu <= hi_x:
+        # Interior: solve for Lagrange multiplier
+        g0 = sum(pi * ai for pi, ai in zip(phat, a))
+        if abs(g0) < 1e-12:
+            return 0.0
 
-    if lo <= mu <= hi:
-        # Interior: solve 1D dual
-        lam = _lambda_root(phat, a)
-        return float(2.0 * np.sum(c * np.log1p(lam * a)))
+        lower = -1e12
+        upper = 1e12
+        for ai in a:
+            if ai > 0:
+                lower = max(lower, -1.0 / ai)
+            elif ai < 0:
+                upper = min(upper, -1.0 / ai)
+        lower = math.nextafter(lower, math.inf)
+        upper = math.nextafter(upper, -math.inf)
 
-    if mu < lo:
-        # Lower tail: only xmin boundary is active
-        return float(2.0 * np.sum(c * np.log((xs - xmin) / (mu - xmin))))
+        lam = brentq(
+            lambda lam: sum(pi * ai / (1.0 + lam * ai) for pi, ai in zip(phat, a)),
+            lower,
+            upper,
+        )
+        return 2.0 * sum(ci * math.log1p(lam * ai) for ci, ai in zip(c_pos, a))
 
-    # Upper tail: only xmax boundary is active
-    return float(2.0 * np.sum(c * np.log((xmax - xs) / (xmax - mu))))
+    if mu < lo_x:
+        return 2.0 * sum(
+            ci * math.log((xi - xmin) / (mu - xmin)) for ci, xi in zip(c_pos, x_pos)
+        )
+
+    return 2.0 * sum(
+        ci * math.log((xmax - xi) / (xmax - mu)) for ci, xi in zip(c_pos, x_pos)
+    )
 
 
 def profile_ci(counts, values, alpha=0.05):
@@ -103,23 +78,32 @@ def profile_ci(counts, values, alpha=0.05):
     -------
     dict with keys: lower, upper.
     """
-    counts = np.asarray(counts, dtype=float)
-    values = np.asarray(values, dtype=float)
+    counts = [float(c) for c in counts]
+    values = [float(v) for v in values]
 
     if len(counts) != len(values):
         raise ValueError("counts and values must have the same length")
-    n = counts.sum()
+
+    n = sum(counts)
     if n <= 0:
         raise ValueError("counts must sum to a positive number")
 
-    muhat = float(np.dot(values, counts) / n)
-    crit = float(chi2.ppf(1.0 - alpha, df=1))
+    # Precompute: only positive-count categories
+    c_pos = []
+    x_pos = []
+    for ci, xi in zip(counts, values):
+        if ci > 0:
+            c_pos.append(ci)
+            x_pos.append(xi)
+    phat = [ci / n for ci in c_pos]
 
-    xmin, xmax = float(values.min()), float(values.max())
+    muhat = sum(v * c for v, c in zip(values, counts)) / n
+    crit = float(chi2.ppf(1.0 - alpha, df=1))
+    xmin, xmax = min(values), max(values)
     eps = 1e-10
 
     def h(mu):
-        return _profile_lr(counts, values, mu) - crit
+        return _profile_lr(c_pos, x_pos, phat, xmin, xmax, mu) - crit
 
     lower = float(brentq(h, xmin + eps, muhat - eps))
     upper = float(brentq(h, muhat + eps, xmax - eps))
