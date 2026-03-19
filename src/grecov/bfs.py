@@ -285,8 +285,9 @@ def grecov_coverage(p, v, n, interval_fn, eps=1e-4):
     n : int
         Total count (sample size).
     interval_fn : callable
-        Function mapping a count vector (tuple of ints) to a (lower, upper)
-        interval. The interval should cover the parameter v^T p.
+        Function mapping a count vector (tuple of ints) to an interval,
+        either as a (lower, upper) tuple or a dict with "lower" and
+        "upper" keys.
     eps : float
         Stopping tolerance on unexplored mass.
 
@@ -305,7 +306,11 @@ def grecov_coverage(p, v, n, interval_fn, eps=1e-4):
     for counts, _log_p, prob in grecov_iter(p, n, eps):
         states_explored += 1
         mass += prob
-        lo, hi = interval_fn(counts)
+        interval = interval_fn(counts)
+        if isinstance(interval, dict):
+            lo, hi = interval["lower"], interval["upper"]
+        else:
+            lo, hi = interval
         if lo <= target <= hi:
             coverage += prob
 
