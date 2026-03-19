@@ -55,20 +55,22 @@ def fmt_time(seconds):
 
 
 def bench_native():
-    from grecov._ext import grecov_bfs, grecov_mass_bfs
+    from grecov._ext import grecov_tail, grecov_mass
 
     results = {}
 
     for n in N_VALUES:
         s_obs = sum(c * v for c, v in zip(X_OBS, V)) * n / 100
         for name, p in CASES.items():
-            res = grecov_bfs(p, V, s_obs, n, EPS)
+            res = grecov_tail(p, V, s_obs, n, EPS)
             # warm up then measure
-            grecov_bfs(p, V, s_obs, n, EPS)
-            t = timeit.timeit(lambda p=p: grecov_bfs(p, V, s_obs, n, EPS), number=1)
+            grecov_tail(p, V, s_obs, n, EPS)
+            t = timeit.timeit(lambda p=p: grecov_tail(p, V, s_obs, n, EPS), number=1)
             iters = max(1, int(2.0 / t))
             t = (
-                timeit.timeit(lambda p=p: grecov_bfs(p, V, s_obs, n, EPS), number=iters)
+                timeit.timeit(
+                    lambda p=p: grecov_tail(p, V, s_obs, n, EPS), number=iters
+                )
                 / iters
             )
             results[f"bfs_n{n}_{name}"] = {
@@ -78,14 +80,12 @@ def bench_native():
 
     # Mass BFS
     for name, p in CASES.items():
-        res = grecov_mass_bfs(p, X_OBS, EPS, 1e-8)
-        grecov_mass_bfs(p, X_OBS, EPS, 1e-8)
-        t = timeit.timeit(lambda p=p: grecov_mass_bfs(p, X_OBS, EPS, 1e-8), number=1)
+        res = grecov_mass(p, X_OBS, EPS, 1e-8)
+        grecov_mass(p, X_OBS, EPS, 1e-8)
+        t = timeit.timeit(lambda p=p: grecov_mass(p, X_OBS, EPS, 1e-8), number=1)
         iters = max(1, int(2.0 / t))
         t = (
-            timeit.timeit(
-                lambda p=p: grecov_mass_bfs(p, X_OBS, EPS, 1e-8), number=iters
-            )
+            timeit.timeit(lambda p=p: grecov_mass(p, X_OBS, EPS, 1e-8), number=iters)
             / iters
         )
         results[f"mass_{name}"] = {
@@ -111,7 +111,7 @@ const path = require('path');
 
   const results = py.runPython(`
 import json, time
-from grecov._ext import grecov_bfs, grecov_mass_bfs
+from grecov._ext import grecov_tail, grecov_mass
 
 cases = {cases_json}
 V = {v_json}
@@ -124,36 +124,36 @@ results = {{}}
 for n in N_VALUES:
     s_obs = sum(c * v for c, v in zip(X_OBS, V)) * n / 100
     for name, p in cases.items():
-        res = grecov_bfs(p, V, s_obs, n, EPS)
+        res = grecov_tail(p, V, s_obs, n, EPS)
         # warm up
-        grecov_bfs(p, V, s_obs, n, EPS)
+        grecov_tail(p, V, s_obs, n, EPS)
         # measure
         t0 = time.monotonic()
         t1 = time.monotonic()
         overhead = t1 - t0
         t0 = time.monotonic()
-        grecov_bfs(p, V, s_obs, n, EPS)
+        grecov_tail(p, V, s_obs, n, EPS)
         t1 = time.monotonic()
         elapsed = t1 - t0 - overhead
         iters = max(1, int(2.0 / max(elapsed, 1e-9)))
         t0 = time.monotonic()
         for _ in range(iters):
-            grecov_bfs(p, V, s_obs, n, EPS)
+            grecov_tail(p, V, s_obs, n, EPS)
         t1 = time.monotonic()
         elapsed = (t1 - t0) / iters
         results[f"bfs_n{{n}}_{{name}}"] = {{"time": elapsed, "states": res["states_explored"]}}
 
 for name, p in cases.items():
-    res = grecov_mass_bfs(p, X_OBS, EPS, 1e-8)
-    grecov_mass_bfs(p, X_OBS, EPS, 1e-8)
+    res = grecov_mass(p, X_OBS, EPS, 1e-8)
+    grecov_mass(p, X_OBS, EPS, 1e-8)
     t0 = time.monotonic()
-    grecov_mass_bfs(p, X_OBS, EPS, 1e-8)
+    grecov_mass(p, X_OBS, EPS, 1e-8)
     t1 = time.monotonic()
     elapsed = t1 - t0
     iters = max(1, int(2.0 / max(elapsed, 1e-9)))
     t0 = time.monotonic()
     for _ in range(iters):
-        grecov_mass_bfs(p, X_OBS, EPS, 1e-8)
+        grecov_mass(p, X_OBS, EPS, 1e-8)
     t1 = time.monotonic()
     elapsed = (t1 - t0) / iters
     results[f"mass_{{name}}"] = {{"time": elapsed, "states": res["states_explored"]}}

@@ -3,15 +3,15 @@
 import numpy as np
 import pytest
 
-from grecov.bfs import grecov_bfs, grecov_mass_bfs
+from grecov.bfs import grecov_tail, grecov_mass
 from grecov.solver import multinomial_ci
 
 
 # ── BFS interfaces ──────────────────────────────────────────────────
 
 
-def test_grecov_bfs_returns_expected_keys():
-    result = grecov_bfs([0.3, 0.7], [0, 1], s_obs=8, n=10, eps=1e-4)
+def test_grecov_tail_returns_expected_keys():
+    result = grecov_tail([0.3, 0.7], [0, 1], s_obs=8, n=10, eps=1e-4)
     expected_keys = {
         "prob_left",
         "prob_right",
@@ -25,21 +25,21 @@ def test_grecov_bfs_returns_expected_keys():
     assert expected_keys == set(result.keys())
 
 
-def test_grecov_mass_bfs_returns_expected_keys():
-    result = grecov_mass_bfs([0.3, 0.7], [3, 7], eps=1e-3, tie_margin=1e-8)
+def test_grecov_mass_returns_expected_keys():
+    result = grecov_mass([0.3, 0.7], [3, 7], eps=1e-3, tie_margin=1e-8)
     expected_keys = {"explored_mass", "states_explored"}
     assert expected_keys == set(result.keys())
 
 
-def test_grecov_bfs_probs_in_range():
-    result = grecov_bfs([0.25, 0.42, 0.33], [0, 1, 2], s_obs=5, n=6, eps=1e-4)
+def test_grecov_tail_probs_in_range():
+    result = grecov_tail([0.25, 0.42, 0.33], [0, 1, 2], s_obs=5, n=6, eps=1e-4)
     assert 0.0 <= result["prob_left"] <= 1.0
     assert 0.0 <= result["prob_right"] <= 1.0
     assert 0.0 < result["explored_mass"] <= 1.0
 
 
-def test_grecov_mass_bfs_mass_in_range():
-    result = grecov_mass_bfs([0.25, 0.42, 0.33], [3, 5, 4], eps=1e-3)
+def test_grecov_mass_mass_in_range():
+    result = grecov_mass([0.25, 0.42, 0.33], [3, 5, 4], eps=1e-3)
     assert 0.0 <= result["explored_mass"] <= 1.0
 
 

@@ -19,7 +19,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' result <- grecov_bfs(
+#' result <- grecov_tail(
 #'   p = c(0.3, 0.7),
 #'   v = c(0, 1),
 #'   s_obs = 8,
@@ -29,8 +29,8 @@
 #' }
 #'
 #' @export
-grecov_bfs <- function(p, v, s_obs, n, eps = 1e-4) {
-  result <- grecov_mod$grecov_bfs(
+grecov_tail <- function(p, v, s_obs, n, eps = 1e-4) {
+  result <- grecov_mod$grecov_tail(
     p = as.double(p),
     v = as.double(v),
     s_obs = as.double(s_obs),

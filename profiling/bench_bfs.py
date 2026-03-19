@@ -14,7 +14,7 @@ import argparse
 import random
 import timeit
 
-from grecov._ext import grecov_bfs, grecov_mass_bfs
+from grecov._ext import grecov_tail, grecov_mass
 
 # Shared parameters
 v = [0, 1, 2, 3, 4]
@@ -70,12 +70,12 @@ def _auto_bench(fn, target_time=2.0):
 def bench_tail_bfs():
     for n in [20, 50, 100]:
         s_obs = sum(ci * vi for ci, vi in zip(x_obs, v)) * n / 100
-        print(f"\n=== grecov_bfs (tail) | n={n}, k=5, eps={eps} ===")
+        print(f"\n=== grecov_tail (tail) | n={n}, k=5, eps={eps} ===")
         print(f"{'case':<12} {'time/call':>12} {'states':>10} {'M states/s':>12}")
         print("-" * 48)
         for name, p in cases.items():
-            res = grecov_bfs(p, v, s_obs, n, eps)
-            t = _auto_bench(lambda p=p: grecov_bfs(p, v, s_obs, n, eps))
+            res = grecov_tail(p, v, s_obs, n, eps)
+            t = _auto_bench(lambda p=p: grecov_tail(p, v, s_obs, n, eps))
             states = res["states_explored"]
             rate = states / t / 1e6 if t > 0 else 0
             print(f"{name:<12} {_fmt_time(t)} {states:>10} {rate:>11.2f}")
@@ -84,14 +84,12 @@ def bench_tail_bfs():
 def bench_mass_bfs():
     for n_scale, x_obs_scaled in [(1, x_obs), (2, [c * 2 for c in x_obs])]:
         n = sum(x_obs_scaled)
-        print(f"\n=== grecov_mass_bfs (mass) | n={n}, k=5, eps={eps} ===")
+        print(f"\n=== grecov_mass (mass) | n={n}, k=5, eps={eps} ===")
         print(f"{'case':<12} {'time/call':>12} {'states':>10} {'M states/s':>12}")
         print("-" * 48)
         for name, p in cases.items():
-            res = grecov_mass_bfs(p, x_obs_scaled, eps, 1e-8)
-            t = _auto_bench(
-                lambda p=p, xo=x_obs_scaled: grecov_mass_bfs(p, xo, eps, 1e-8)
-            )
+            res = grecov_mass(p, x_obs_scaled, eps, 1e-8)
+            t = _auto_bench(lambda p=p, xo=x_obs_scaled: grecov_mass(p, xo, eps, 1e-8))
             states = res["states_explored"]
             rate = states / t / 1e6 if t > 0 and states > 0 else 0
             print(f"{name:<12} {_fmt_time(t)} {states:>10} {rate:>11.2f}")
@@ -121,7 +119,7 @@ def bench_many_calls():
 
     def run_tail_many():
         for p in p_vectors:
-            grecov_bfs(p, v, s_obs, n, eps)
+            grecov_tail(p, v, s_obs, n, eps)
 
     run_tail_many()  # warm up
     t_tail = timeit.timeit(run_tail_many, number=1)
@@ -132,7 +130,7 @@ def bench_many_calls():
     # Mass BFS many-call
     def run_mass_many():
         for p in p_vectors:
-            grecov_mass_bfs(p, x_obs, eps, 1e-8)
+            grecov_mass(p, x_obs, eps, 1e-8)
 
     run_mass_many()
     t_mass = timeit.timeit(run_mass_many, number=1)

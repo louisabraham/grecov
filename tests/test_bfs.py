@@ -1,11 +1,11 @@
 """Tests that Python and C++ BFS implementations produce identical results."""
 
 import pytest
-from grecov._ext import grecov_bfs as cpp_bfs  # type: ignore
-from grecov._ext import grecov_mass_bfs as cpp_mass_bfs  # type: ignore
+from grecov._ext import grecov_tail as cpp_bfs  # type: ignore
+from grecov._ext import grecov_mass as cpp_mass_bfs  # type: ignore
 
-from grecov.bfs import grecov_bfs as py_bfs
-from grecov.bfs import grecov_mass_bfs as py_mass_bfs
+from grecov.bfs import grecov_tail as py_bfs
+from grecov.bfs import grecov_mass as py_mass_bfs
 
 # Both Python and C++ use the same math (std::exp / math.exp).
 # Floating-point accumulation order differs, so allow small absolute tolerance
@@ -57,11 +57,11 @@ MASS_CASES = [
 ]
 
 
-# ── grecov_bfs tests ────────────────────────────────────────────────
+# ── grecov_tail tests ────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize("p,v,counts", BFS_CASES)
-def test_grecov_bfs_match(p, v, counts):
+def test_grecov_tail_match(p, v, counts):
     n = sum(counts)
     s_obs = sum(c * vi for c, vi in zip(counts, v))
     eps = 1e-6
@@ -94,11 +94,11 @@ def test_grecov_bfs_match(p, v, counts):
         )
 
 
-# ── grecov_mass_bfs tests ───────────────────────────────────────────
+# ── grecov_mass tests ───────────────────────────────────────────
 
 
 @pytest.mark.parametrize("p,x_obs", MASS_CASES)
-def test_grecov_mass_bfs_match(p, x_obs):
+def test_grecov_mass_match(p, x_obs):
     eps = 1e-3
     tie_margin = 1e-8
 

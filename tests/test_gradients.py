@@ -8,11 +8,11 @@ try:
 except (ImportError, ModuleNotFoundError):
     pytest.skip("scipy.differentiate not available", allow_module_level=True)
 
-from grecov.bfs import grecov_bfs as py_bfs
+from grecov.bfs import grecov_tail as py_bfs
 from grecov.solver import _softmax, tail_gradient, tail_hessian
 
 try:
-    from grecov._ext import grecov_bfs as cpp_bfs  # type: ignore
+    from grecov._ext import grecov_tail as cpp_bfs  # type: ignore
 except ImportError:
     cpp_bfs = None
 

@@ -83,7 +83,7 @@ cat(sprintf("95%% CI: [%.4f, %.4f]\n", result$lower, result$upper))
 The low-level BFS function is also available:
 
 ```r
-bfs <- grecov_bfs(
+bfs <- grecov_tail(
   p = c(0.1, 0.1, 0.2, 0.6),
   v = c(1, 2, 3, 4),
   s_obs = 330,

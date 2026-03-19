@@ -1,5 +1,5 @@
 export(multinomial_ci)
-export(grecov_bfs)
+export(grecov_tail)
 export(install_grecov)
 importFrom(reticulate, import)
 importFrom(reticulate, py_require)

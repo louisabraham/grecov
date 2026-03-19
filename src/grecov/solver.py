@@ -22,12 +22,12 @@ except ImportError:
     minimize_ipopt = None
 from scipy.optimize import NonlinearConstraint, differential_evolution, minimize
 
-from grecov.bfs import grecov_bfs as _bfs_py
-from grecov.bfs import grecov_mass_bfs as _cum_bfs_py
+from grecov.bfs import grecov_tail as _bfs_py
+from grecov.bfs import grecov_mass as _cum_bfs_py
 
 try:
-    from grecov._ext import grecov_bfs as _bfs_ext  # type: ignore
-    from grecov._ext import grecov_mass_bfs as _mass_bfs_ext  # type: ignore
+    from grecov._ext import grecov_tail as _bfs_ext  # type: ignore
+    from grecov._ext import grecov_mass as _mass_bfs_ext  # type: ignore
 except ImportError:
     logging.warning("Using Python implementation of BFS")
     _bfs_ext = None

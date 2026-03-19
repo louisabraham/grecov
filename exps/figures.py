@@ -8,7 +8,7 @@ try:
 except NameError:
     plt.switch_backend("Agg")
 
-from grecov.bfs import grecov_bfs, grecov_mass_bfs
+from grecov.bfs import grecov_tail, grecov_mass
 from grecov.solver import multinomial_ci
 
 # ── 1D explored mass plot ────────────────────────────────────────────────────
@@ -17,14 +17,14 @@ xs_1d = np.linspace(0.01, 0.99, 200)
 for x_obs_1d in [[0, 50], [25, 50]]:
     explored_mass_1d = []
     for x in xs_1d:
-        res = grecov_mass_bfs([1 - x, x], x_obs_1d)
+        res = grecov_mass([1 - x, x], x_obs_1d)
         explored_mass_1d.append(res["explored_mass"])
 
     fig, ax = plt.subplots(1, 1, figsize=(8, 6))
     ax.plot(xs_1d, explored_mass_1d)
     ax.set_xlabel(r"$p$")
     ax.set_ylabel(r"explored mass")
-    ax.set_title(rf"grecov_mass_bfs with $x_\mathrm{{obs}} = {x_obs_1d!r}$")
+    ax.set_title(rf"grecov_mass with $x_\mathrm{{obs}} = {x_obs_1d!r}$")
     plt.tight_layout()
     plt.show()
 
@@ -76,9 +76,9 @@ for i in tqdm(range(n_grid), desc="reduced grid"):
         if 1 - x - y < 1e-3:
             continue
         p = [x, y, 1 - x - y]
-        r_mass = grecov_mass_bfs(p, x_obs)
+        r_mass = grecov_mass(p, x_obs)
         Z_mass[i, j] = r_mass["explored_mass"]
-        r_tail = grecov_bfs(p, v, s_obs, n)
+        r_tail = grecov_tail(p, v, s_obs, n)
         Z_left[i, j] = r_tail["prob_left"]
         Z_right[i, j] = r_tail["prob_right"]
 
@@ -96,9 +96,9 @@ for i in tqdm(range(n_grid_s), desc="logit grid"):
     for j in range(n_grid_s):
         p = _softmax(T0[i, j], T1[i, j])
         pl = p.tolist()
-        r_mass = grecov_mass_bfs(pl, x_obs)
+        r_mass = grecov_mass(pl, x_obs)
         Z_mass_s[i, j] = r_mass["explored_mass"]
-        r_tail = grecov_bfs(pl, v, s_obs, n)
+        r_tail = grecov_tail(pl, v, s_obs, n)
         Z_left_s[i, j] = r_tail["prob_left"]
         Z_right_s[i, j] = r_tail["prob_right"]
 

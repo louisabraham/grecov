@@ -1,5 +1,5 @@
-test_that("grecov_bfs returns valid tail probabilities", {
-  result <- grecov_bfs(
+test_that("grecov_tail returns valid tail probabilities", {
+  result <- grecov_tail(
     p = c(0.3, 0.7),
     v = c(0, 1),
     s_obs = 8,
@@ -13,8 +13,8 @@ test_that("grecov_bfs returns valid tail probabilities", {
   expect_true(result$states_explored > 0)
 })
 
-test_that("grecov_bfs with uniform distribution", {
-  result <- grecov_bfs(
+test_that("grecov_tail with uniform distribution", {
+  result <- grecov_tail(
     p = c(0.5, 0.5),
     v = c(0, 1),
     s_obs = 5,

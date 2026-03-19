@@ -302,27 +302,52 @@ template <typename Pack> static FlatHashSet<Pack> &get_visited() {
   return visited;
 }
 
-// ─── Balanced rounding (largest-remainder method) ──────────────────
+// ─── Mode finding (balanced rounding + greedy hill-climb) ──────────
 
 template <int D, typename Pack>
 static typename Pack::State start_counts(const double *p, int n) {
-  int counts[D];
-  double frac[D];
+  int x[D];
   int total = 0;
   for (int i = 0; i < D; ++i) {
-    double x = p[i] * n;
-    counts[i] = static_cast<int>(std::floor(x));
-    frac[i] = x - counts[i];
-    total += counts[i];
+    x[i] = static_cast<int>(p[i] * n);
+    total += x[i];
   }
+  // Distribute remainder to dimensions with largest fractional parts
   int remainder = n - total;
-  int idx[D];
-  for (int i = 0; i < D; ++i)
-    idx[i] = i;
-  std::sort(idx, idx + D, [&frac](int a, int b) { return frac[a] > frac[b]; });
-  for (int r = 0; r < remainder; ++r)
-    counts[idx[r]] += 1;
-  return Pack::pack(counts);
+  if (remainder > 0) {
+    int idx[D];
+    for (int i = 0; i < D; ++i)
+      idx[i] = i;
+    std::sort(idx, idx + D, [&](int a, int b) {
+      return (p[a] * n - x[a]) > (p[b] * n - x[b]);
+    });
+    for (int r = 0; r < remainder; ++r)
+      x[idx[r]] += 1;
+  }
+  // Greedy ascent to the mode: transfer j→i while (x_j/(x_i+1))*(p_i/p_j) > 1
+  while (true) {
+    double best_ratio = 1.0;
+    int best_i = -1, best_j = -1;
+    for (int j = 0; j < D; ++j) {
+      if (x[j] == 0)
+        continue;
+      for (int i = 0; i < D; ++i) {
+        if (i == j)
+          continue;
+        double ratio = (static_cast<double>(x[j]) / (x[i] + 1)) * (p[i] / p[j]);
+        if (ratio > best_ratio) {
+          best_ratio = ratio;
+          best_i = i;
+          best_j = j;
+        }
+      }
+    }
+    if (best_i < 0)
+      break;
+    x[best_i] += 1;
+    x[best_j] -= 1;
+  }
+  return Pack::pack(x);
 }
 
 // ─── BFS result ────────────────────────────────────────────────────
@@ -341,8 +366,8 @@ struct BFSResult {
 // ─── Templated tail BFS ────────────────────────────────────────────
 
 template <int D, typename Pack>
-NOINLINE static BFSResult grecov_bfs_impl(const double *p, const double *v,
-                                          double S_obs, int n, double eps) {
+NOINLINE static BFSResult grecov_tail_impl(const double *p, const double *v,
+                                           double S_obs, int n, double eps) {
   using State = typename Pack::State;
   using E = Entry<State>;
   using Cmp = EntryCompare<State>;
@@ -475,9 +500,9 @@ struct MassBFSResult {
 // ─── Templated mass BFS ───────────────────────────────────────────
 
 template <int D, typename Pack>
-NOINLINE static MassBFSResult
-grecov_mass_bfs_impl(const double *p, const int *x_obs, int n, double eps,
-                     double tie_margin) {
+NOINLINE static MassBFSResult grecov_mass_impl(const double *p,
+                                               const int *x_obs, int n,
+                                               double eps, double tie_margin) {
   using State = typename Pack::State;
   using E = Entry<State>;
   using Cmp = EntryCompare<State>;
@@ -586,9 +611,9 @@ static std::vector<double> stabilize_probs(const std::vector<double> &p_raw) {
 
 // ─── Dispatch by dimension and packing ─────────────────────────────
 
-static BFSResult grecov_bfs_dispatch(const std::vector<double> &p_raw,
-                                     const std::vector<double> &v, double S_obs,
-                                     int n, double eps) {
+static BFSResult grecov_tail_dispatch(const std::vector<double> &p_raw,
+                                      const std::vector<double> &v,
+                                      double S_obs, int n, double eps) {
   int d = static_cast<int>(p_raw.size());
   validate_inputs(d, n, static_cast<int>(v.size()));
   auto p = stabilize_probs(p_raw);
@@ -601,7 +626,7 @@ static BFSResult grecov_bfs_dispatch(const std::vector<double> &p_raw,
   if (d <= 4) {
 #define DISPATCH_BFS_16(D_VAL)                                                 \
   case D_VAL:                                                                  \
-    return grecov_bfs_impl<D_VAL, Pack16<D_VAL>>(pp, vp, S_obs, n, eps);
+    return grecov_tail_impl<D_VAL, Pack16<D_VAL>>(pp, vp, S_obs, n, eps);
     switch (d) {
       DISPATCH_BFS_16(2)
       DISPATCH_BFS_16(3)
@@ -611,7 +636,7 @@ static BFSResult grecov_bfs_dispatch(const std::vector<double> &p_raw,
   } else if (n <= 255) {
 #define DISPATCH_BFS_8(D_VAL)                                                  \
   case D_VAL:                                                                  \
-    return grecov_bfs_impl<D_VAL, Pack8<D_VAL>>(pp, vp, S_obs, n, eps);
+    return grecov_tail_impl<D_VAL, Pack8<D_VAL>>(pp, vp, S_obs, n, eps);
     switch (d) {
       DISPATCH_BFS_8(5)
       DISPATCH_BFS_8(6)
@@ -622,7 +647,7 @@ static BFSResult grecov_bfs_dispatch(const std::vector<double> &p_raw,
   } else {
 #define DISPATCH_BFS_16X2(D_VAL)                                               \
   case D_VAL:                                                                  \
-    return grecov_bfs_impl<D_VAL, Pack16x2<D_VAL>>(pp, vp, S_obs, n, eps);
+    return grecov_tail_impl<D_VAL, Pack16x2<D_VAL>>(pp, vp, S_obs, n, eps);
     switch (d) {
       DISPATCH_BFS_16X2(5)
       DISPATCH_BFS_16X2(6)
@@ -634,9 +659,9 @@ static BFSResult grecov_bfs_dispatch(const std::vector<double> &p_raw,
   UNREACHABLE();
 }
 
-static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
-                                              const std::vector<int32_t> &x_obs,
-                                              double eps, double tie_margin) {
+static MassBFSResult grecov_mass_dispatch(const std::vector<double> &p_raw,
+                                          const std::vector<int32_t> &x_obs,
+                                          double eps, double tie_margin) {
   int d = static_cast<int>(p_raw.size());
   int n = 0;
   for (auto xi : x_obs)
@@ -651,8 +676,7 @@ static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
   if (d <= 4) {
 #define DISPATCH_MASS_16(D_VAL)                                                \
   case D_VAL:                                                                  \
-    return grecov_mass_bfs_impl<D_VAL, Pack16<D_VAL>>(pp, xp, n, eps,          \
-                                                      tie_margin);
+    return grecov_mass_impl<D_VAL, Pack16<D_VAL>>(pp, xp, n, eps, tie_margin);
     switch (d) {
       DISPATCH_MASS_16(2)
       DISPATCH_MASS_16(3)
@@ -662,8 +686,7 @@ static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
   } else if (n <= 255) {
 #define DISPATCH_MASS_8(D_VAL)                                                 \
   case D_VAL:                                                                  \
-    return grecov_mass_bfs_impl<D_VAL, Pack8<D_VAL>>(pp, xp, n, eps,           \
-                                                     tie_margin);
+    return grecov_mass_impl<D_VAL, Pack8<D_VAL>>(pp, xp, n, eps, tie_margin);
     switch (d) {
       DISPATCH_MASS_8(5)
       DISPATCH_MASS_8(6)
@@ -674,8 +697,7 @@ static MassBFSResult grecov_mass_bfs_dispatch(const std::vector<double> &p_raw,
   } else {
 #define DISPATCH_MASS_16X2(D_VAL)                                              \
   case D_VAL:                                                                  \
-    return grecov_mass_bfs_impl<D_VAL, Pack16x2<D_VAL>>(pp, xp, n, eps,        \
-                                                        tie_margin);
+    return grecov_mass_impl<D_VAL, Pack16x2<D_VAL>>(pp, xp, n, eps, tie_margin);
     switch (d) {
       DISPATCH_MASS_16X2(5)
       DISPATCH_MASS_16X2(6)
@@ -693,10 +715,10 @@ NB_MODULE(_ext, m) {
   m.doc() = "C++ for the GreCov algorithm";
 
   m.def(
-      "grecov_bfs",
+      "grecov_tail",
       [](const std::vector<double> &p, const std::vector<double> &v,
          double S_obs, int n, double eps) -> nb::dict {
-        auto res = grecov_bfs_dispatch(p, v, S_obs, n, eps);
+        auto res = grecov_tail_dispatch(p, v, S_obs, n, eps);
 
         nb::dict d;
         d["prob_left"] = res.prob_left;
@@ -713,11 +735,11 @@ NB_MODULE(_ext, m) {
       nb::arg("eps") = 1e-4, "Run the GreCov equal-tail BFS algorithm.");
 
   m.def(
-      "grecov_mass_bfs",
+      "grecov_mass",
       [](const std::vector<double> &p, const std::vector<int> &x_obs,
          double eps, double tie_margin) -> nb::dict {
         std::vector<int32_t> x(x_obs.begin(), x_obs.end());
-        auto res = grecov_mass_bfs_dispatch(p, x, eps, tie_margin);
+        auto res = grecov_mass_dispatch(p, x, eps, tie_margin);
 
         nb::dict d;
         d["explored_mass"] = res.explored_mass;
