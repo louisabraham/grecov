@@ -60,6 +60,8 @@ def profile_ci(counts, values, alpha=0.05):
 
         `pole` is the singularity that lam must not cross (x_lo or x_hi).
         """
+        below = lam < pole  # which side of the pole we must stay on
+        prev = lam
         for _ in range(50):
             # Compute LR and its derivative in a single pass
             s1 = s2 = 0.0
@@ -74,14 +76,13 @@ def profile_ci(counts, values, alpha=0.05):
             step = (lr - crit) / dlr
             lam -= step
 
-            # Clamp: stay on the correct side of the pole
-            if lam < pole:
-                lam = min(lam, pole - 1e-12)
-            else:
-                lam = max(lam, pole + 1e-12)
+            # If Newton crossed the pole, bisect between prev and pole
+            if (below and lam >= pole) or (not below and lam <= pole):
+                lam = (prev + pole) / 2
 
             if abs(step) < 1e-12:
                 break
+            prev = lam
 
         # Recover mu from the converged lambda
         return lam + n / s1
