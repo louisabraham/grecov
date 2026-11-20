@@ -35,11 +35,20 @@ def profile_ci(counts, values, alpha=0.05):
     -------
     dict with keys: lower, upper.
     """
+    return profile_ci_crit(counts, values, float(chi2.ppf(1.0 - alpha, df=1)))
+
+
+def profile_ci_crit(counts, values, crit):
+    """Same interval with an explicit cutoff on the profile LR statistic.
+
+    `profile_ci` passes the Wilks value chi2_{1,1-alpha}.  A calibrated
+    method may pass an observation-dependent cutoff instead; the interval
+    geometry and the solver are unchanged.
+    """
     n = sum(float(c) for c in counts)
     if n <= 0:
         raise ValueError("counts must sum to a positive number")
 
-    crit = float(chi2.ppf(1.0 - alpha, df=1))
     xmin = min(float(v) for v in values)
     xmax = max(float(v) for v in values)
 
