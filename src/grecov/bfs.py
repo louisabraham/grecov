@@ -65,7 +65,7 @@ def _log_multinomial(counts, log_p, log_fact, n):
     return val
 
 
-def grecov_iter(p, n, eps=1e-4):
+def grecov_iter(p, n, eps=1e-4, with_parent=False):
     """
     Yield multinomial count vectors in decreasing probability order.
 
@@ -77,11 +77,14 @@ def grecov_iter(p, n, eps=1e-4):
         Total count.
     eps : float
         Stopping tolerance on unexplored mass.
+    with_parent : bool
+        If True, yield a 4th element: the parent count vector that
+        generated this state in the BFS (None for the starting state).
+        Useful for warm-starting iterative solvers across neighbors.
 
     Yields
     ------
-    (counts, log_prob, prob) : (tuple[int,...], float, float)
-        Count vector, log-probability, and probability, in decreasing order.
+    (counts, log_prob, prob) or (counts, log_prob, prob, parent)
     """
     assert n > 0, "n must be positive"
 
@@ -95,18 +98,22 @@ def grecov_iter(p, n, eps=1e-4):
 
     start = tuple(_start_counts(p_stable, n))
     start_lp = _log_multinomial(start, log_p, log_fact, n)
-    heap = [(-start_lp, start)]
+    # Heap entries: (-log_prob, counts, parent)
+    heap = [(-start_lp, start, None)]
     visited = {start}
 
     mass = 0.0
 
     while heap:
-        neg_lp, counts = heapq.heappop(heap)
+        neg_lp, counts, parent = heapq.heappop(heap)
         log_p_state = -neg_lp
         p_state = math.exp(log_p_state)
         mass += p_state
 
-        yield counts, log_p_state, p_state
+        if with_parent:
+            yield counts, log_p_state, p_state, parent
+        else:
+            yield counts, log_p_state, p_state
 
         if 1.0 - eps <= mass:
             break
@@ -131,7 +138,7 @@ def grecov_iter(p, n, eps=1e-4):
                     + log_p[i]
                     - log_p[j]
                 )
-                heapq.heappush(heap, (-log_p_neighbor, neighbor))
+                heapq.heappush(heap, (-log_p_neighbor, neighbor, counts))
 
 
 def grecov_tail(p, v, s_obs, n, eps=1e-4):
